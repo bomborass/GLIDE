@@ -10,10 +10,17 @@ permissions:
 
 jobs:
   mac:
-    runs-on: macos-14
+    runs-on: macos-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+
+      - name: Pick an Xcode that still targets macOS 11
+        run: |
+          ls -d /Applications/Xcode*.app || true
+          X=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | head -n 1)
+          if [ -n "$X" ]; then sudo xcode-select -s "$X"; fi
+          xcodebuild -version
 
       - uses: actions/setup-node@v4
         with:
@@ -48,6 +55,10 @@ jobs:
           for b in dist/SLIDE-mac/*; do codesign --force --deep --sign - "$b"; done
           cp INSTALL.txt dist/SLIDE-mac/
           lipo -info dist/SLIDE-mac/SLIDE.vst3/Contents/MacOS/SLIDE
+          # must load on macOS 12.5: fail the build if the minimum version crept up
+          MINOS=$(vtool -show-build -arch arm64 dist/SLIDE-mac/SLIDE.vst3/Contents/MacOS/SLIDE | awk '/minos/{print $2; exit}')
+          echo "minimum macOS: $MINOS"
+          [ "$(printf '%s\n' "$MINOS" 12.0 | sort -V | head -n 1)" = "$MINOS" ] || { echo "minimum macOS $MINOS is too new"; exit 1; }
           cd dist && ditto -c -k --keepParent SLIDE-mac SLIDE-mac.zip
 
       - uses: actions/upload-artifact@v4
