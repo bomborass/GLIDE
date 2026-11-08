@@ -135,6 +135,10 @@ int main (int argc, char** argv)
         for (auto& d : aus) std::cout << "    " << d.manufacturerName << " / " << d.name << "  " << d.fileOrIdentifier << "\n";
         check (aus.size() > 0, "AU instruments listed");
         PluginCatalog cat;
+        cat.refresh();
+        const auto listed = cat.toVar();
+        std::cout << "synth list: " << juce::JSON::toString (listed, true).substring (0, 400) << "\n";
+        check (listed.size() >= (int) aus.size(), "synth list built without opening anything");
         for (auto& d : aus)
             if (d.manufacturerName.containsIgnoreCase ("Apple"))
             {

@@ -75,7 +75,8 @@ export function Chooser() {
         <div className="chooser-list">
           {isPlugin && <>
             {scanning && <div className="chooser-empty">{scanName ? `Checking ${scanName}…` : 'Looking for AU and VST3 instruments…'}</div>}
-            {!scanning && plugins.length === 0 && <div className="chooser-empty">No instrument plugins found. Install a synth, then press Rescan.</div>}
+            {!scanning && plugins.length === 0 && <div className="chooser-empty">No instrument plugins found. Install a synth, then press Refresh.</div>}
+            {plugins.length > 0 && <div className="chooser-empty">Nothing is opened until you pick it, so choose the synths you know work.</div>}
             {filtered.mpe.length > 0 && <Group label="MPE synths">{filtered.mpe.map(p => <PluginRow key={p.id} p={p} current={isCurrent(p.id)} loading={loading === p.id} onPick={() => pickPlugin(p)} />)}</Group>}
             {filtered.other.length > 0 && <Group label={filtered.mpe.length ? 'Other instruments' : 'Your instruments'}>{filtered.other.map(p => <PluginRow key={p.id} p={p} current={isCurrent(p.id)} loading={loading === p.id} onPick={() => pickPlugin(p)} />)}</Group>}
           </>}
@@ -99,7 +100,7 @@ export function Chooser() {
         <div className="chooser-foot">
           <span>If a synth doesn't glide, turn on MPE in its settings and set its pitch-bend range to ±{getState().clip.range}.</span>
           <div className="row">
-            {isPlugin && <button className="btn" onClick={() => { setScanning(true); bridge.scanPlugins(true); }}>Rescan</button>}
+            {isPlugin && <button className="btn" onClick={() => { setScanning(true); bridge.scanPlugins(true); }}>Refresh</button>}
             {canClose && <button className="btn" onClick={close}>Close</button>}
           </div>
         </div>

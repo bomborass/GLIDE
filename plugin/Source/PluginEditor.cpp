@@ -79,7 +79,7 @@ juce::WebBrowserComponent::Options SlideEditor::makeOptions()
     on ("audition", [this] (const juce::var& v) { proc.audition ((int) v.getProperty ("pitch", 60), (float) (double) v.getProperty ("velocity", 0.8)); });
     on ("keyDown", [this] (const juce::var& v) { proc.keyDown ((int) v.getProperty ("pitch", 60), (float) (double) v.getProperty ("velocity", 0.8)); });
     on ("keyUp", [this] (const juce::var& v) { proc.keyUp ((int) v.getProperty ("pitch", 60)); });
-    on ("scanPlugins", [this] (const juce::var& v) { proc.catalog().scan ((bool) v.getProperty ("force", false)); });
+    on ("scanPlugins", [this] (const juce::var&) { proc.catalog().refresh(); });
     on ("loadPlugin", [this] (const juce::var& v)
     {
         const auto id = v.getProperty ("id", "").toString();

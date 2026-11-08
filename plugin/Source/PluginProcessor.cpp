@@ -444,10 +444,15 @@ void SlideProcessor::loadPlugin (const juce::String& id, std::function<void (boo
 {
     auto desc = catalog().find (id);
     if (! desc && pendingDesc && pendingDesc->createIdentifierString() == id) desc = pendingDesc;
-    if (! desc) { done (false, "This synth is no longer installed. Press Rescan."); return; }
+    if (! desc) { done (false, "This synth is no longer installed. Press Refresh."); return; }
+
+    // a VST3 listed by name is opened here for the first time, and only because it was picked
+    juce::String resolveError;
+    const auto resolved = catalog().resolve (*desc, resolveError);
+    if (! resolved) { done (false, resolveError); return; }
 
     juce::WeakReference<SlideProcessor> weak (this);
-    const auto d = *desc;
+    const auto d = *resolved;
     catalog().formats.createPluginInstanceAsync (d, sampleRate, blockSize,
         [weak, d, done] (std::unique_ptr<juce::AudioPluginInstance> inst, const juce::String& error)
         {
