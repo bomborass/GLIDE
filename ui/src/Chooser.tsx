@@ -18,13 +18,15 @@ export function Chooser() {
   const current = useStore(s => s.instrument);
   const [plugins, setPlugins] = useState<PluginInfo[]>([]);
   const [scanning, setScanning] = useState(false);
+  const [scanName, setScanName] = useState('');
   const [q, setQ] = useState('');
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const search = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    bridge.onPluginList(list => { setPlugins(list); setScanning(false); });
+    bridge.onScanStatus(st => { setScanning(st.scanning); setScanName(st.name || ''); });
+    bridge.onPluginList(list => setPlugins(list));
     bridge.onPluginLoaded(r => {
       setLoading(null);
       if (r.ok) {
@@ -72,7 +74,7 @@ export function Chooser() {
         <input id="synth-search" ref={search} className="chooser-search" placeholder={isPlugin ? 'Search your synths' : 'Search'} value={q} onChange={e => setQ(e.target.value)} />
         <div className="chooser-list">
           {isPlugin && <>
-            {scanning && <div className="chooser-empty">Looking for AU and VST3 instruments…</div>}
+            {scanning && <div className="chooser-empty">{scanName ? `Checking ${scanName}…` : 'Looking for AU and VST3 instruments…'}</div>}
             {!scanning && plugins.length === 0 && <div className="chooser-empty">No instrument plugins found. Install a synth, then press Rescan.</div>}
             {filtered.mpe.length > 0 && <Group label="MPE synths">{filtered.mpe.map(p => <PluginRow key={p.id} p={p} current={isCurrent(p.id)} loading={loading === p.id} onPick={() => pickPlugin(p)} />)}</Group>}
             {filtered.other.length > 0 && <Group label={filtered.mpe.length ? 'Other instruments' : 'Your instruments'}>{filtered.other.map(p => <PluginRow key={p.id} p={p} current={isCurrent(p.id)} loading={loading === p.id} onPick={() => pickPlugin(p)} />)}</Group>}

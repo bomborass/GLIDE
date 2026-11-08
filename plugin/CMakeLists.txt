@@ -58,6 +58,9 @@ target_sources(SLIDE PRIVATE
     Source/PluginCatalog.cpp
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp)
+if(APPLE)
+    target_sources(SLIDE PRIVATE Source/PluginCatalogMac.mm)
+endif()
 
 target_compile_definitions(SLIDE PUBLIC
     JUCE_WEB_BROWSER=1
@@ -86,6 +89,9 @@ if(SLIDE_TESTS)
     juce_add_console_app(SlideTest PRODUCT_NAME "SlideTest" NEEDS_WEB_BROWSER TRUE)
     target_sources(SlideTest PRIVATE test/EngineTest.cpp
         Source/Clip.cpp Source/PluginCatalog.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp)
+    if(APPLE)
+        target_sources(SlideTest PRIVATE Source/PluginCatalogMac.mm)
+    endif()
     target_compile_definitions(SlideTest PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=1
         JUCE_PLUGINHOST_VST3=1 JUCE_PLUGINHOST_AU=1 JUCE_PLUGINHOST_LADSPA=0 JUCE_PLUGINHOST_LV2=0)
     target_link_libraries(SlideTest PRIVATE SLIDEUi juce::juce_audio_utils juce::juce_audio_processors

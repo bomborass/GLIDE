@@ -20,7 +20,8 @@
 //                "prepareAudio" {}             render the clip to .wav ahead of a drag
 //   C++ -> UI  : "init"         {clip?, instrument?}  saved state from the project
 //                "hostTransport" {playing, beat, bpm}  when following the host
-//                "pluginList"   PluginInfo[]   result of a scan (also sent on load)
+//                "pluginList"   PluginInfo[]   result of a scan (also sent on load and while scanning)
+//                "scanStatus"   {scanning, name}  plug-in being checked right now
 //                "pluginLoaded" {id, name, ok, error?}
 //                "paramChanged" {id, name, value 0..1}  hosted synth knob moved
 //
@@ -62,6 +63,7 @@ export const bridge = {
   onInit(fn: (p: { clip?: Clip; instrument?: any }) => void) { juce?.backend?.addEventListener('init', fn); },
   onParamChanged(fn: (p: { id: string; name: string; value: number }) => void) { juce?.backend?.addEventListener('paramChanged', fn); },
   onPluginList(fn: (list: PluginInfo[]) => void) { juce?.backend?.addEventListener('pluginList', fn); },
+  onScanStatus(fn: (s: { scanning: boolean; name: string }) => void) { juce?.backend?.addEventListener('scanStatus', fn); },
   onPluginLoaded(fn: (r: { id: string; name: string; ok: boolean; error?: string }) => void) { juce?.backend?.addEventListener('pluginLoaded', fn); },
 };
 

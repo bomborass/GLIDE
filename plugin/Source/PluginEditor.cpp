@@ -134,7 +134,12 @@ void SlideEditor::sendInit()
     lastBeat = -1; // resend the transport
 }
 
-void SlideEditor::sendPluginList() { emit ("pluginList", proc.catalog().toVar()); }
+void SlideEditor::sendPluginList()
+{
+    auto& cat = proc.catalog();
+    emit ("scanStatus", obj ({ { "scanning", cat.isScanning() }, { "name", cat.currentlyScanning() } }));
+    emit ("pluginList", cat.toVar());
+}
 
 void SlideEditor::changeListenerCallback (juce::ChangeBroadcaster*) { sendPluginList(); }
 

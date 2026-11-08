@@ -126,6 +126,25 @@ int main (int argc, char** argv)
         check (pk > 0.01f, "wav has sound");
     }
     proc.releaseResources();
+
+   #if JUCE_MAC
+    // AU instruments listed without opening them must still open by that description
+    {
+        const auto aus = listAudioUnitInstruments();
+        std::cout << "AU instruments: " << aus.size() << "\n";
+        for (auto& d : aus) std::cout << "    " << d.manufacturerName << " / " << d.name << "  " << d.fileOrIdentifier << "\n";
+        check (aus.size() > 0, "AU instruments listed");
+        PluginCatalog cat;
+        for (auto& d : aus)
+            if (d.manufacturerName.containsIgnoreCase ("Apple"))
+            {
+                juce::String e;
+                auto inst = cat.formats.createPluginInstance (d, 44100, 512, e);
+                check (inst != nullptr, "opens " + d.name + (e.isNotEmpty() ? " (" + e + ")" : juce::String()));
+                break;
+            }
+    }
+   #endif
     std::cout << (fails ? "FAILED " : "ALL OK ") << fails << "\n";
     return fails ? 1 : 0;
 }
