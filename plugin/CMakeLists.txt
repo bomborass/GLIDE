@@ -92,6 +92,16 @@ if(SLIDE_TESTS)
     if(APPLE)
         target_sources(SlideTest PRIVATE Source/PluginCatalogMac.mm)
     endif()
+
+    # plays a bent note into a real MPE synth (used by CI with Surge XT)
+    juce_add_console_app(SynthCheck PRODUCT_NAME "SynthCheck" NEEDS_WEB_BROWSER FALSE)
+    target_sources(SynthCheck PRIVATE test/SynthCheck.cpp Source/Clip.cpp Source/PluginCatalog.cpp)
+    if(APPLE)
+        target_sources(SynthCheck PRIVATE Source/PluginCatalogMac.mm)
+    endif()
+    target_compile_definitions(SynthCheck PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0
+        JUCE_PLUGINHOST_VST3=1 JUCE_PLUGINHOST_AU=1 JUCE_PLUGINHOST_LADSPA=0 JUCE_PLUGINHOST_LV2=0)
+    target_link_libraries(SynthCheck PRIVATE juce::juce_audio_utils juce::juce_audio_processors juce::juce_recommended_config_flags)
     target_compile_definitions(SlideTest PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=1
         JUCE_PLUGINHOST_VST3=1 JUCE_PLUGINHOST_AU=1 JUCE_PLUGINHOST_LADSPA=0 JUCE_PLUGINHOST_LV2=0)
     target_link_libraries(SlideTest PRIVATE SLIDEUi juce::juce_audio_utils juce::juce_audio_processors

@@ -36,13 +36,27 @@ jobs:
         run: cmake -S plugin -B build -DCMAKE_BUILD_TYPE=Release -DSLIDE_TESTS=ON -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
 
       - name: Build VST3, AU and the standalone app
-        run: cmake --build build --config Release --target SLIDE_VST3 SLIDE_AU SLIDE_Standalone SlideTest -j 4
+        run: cmake --build build --config Release --target SLIDE_VST3 SLIDE_AU SLIDE_Standalone SlideTest SynthCheck -j 4
 
       - name: Engine check
         continue-on-error: true
         run: |
           TEST=$(find build -type f -perm -u+x -name SlideTest | head -n 1)
           "$TEST" plugin/test/demo.json
+
+      - name: MPE check with a real synth (Surge XT)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download -R surge-synthesizer/releases-xt --pattern '*macOS*.dmg' -D surge || exit 0
+          DMG=$(ls surge/*.dmg | head -n 1)
+          hdiutil attach "$DMG" -mountpoint /Volumes/surge -nobrowse
+          PKG=$(find /Volumes/surge -name '*.pkg' | head -n 1)
+          sudo installer -pkg "$PKG" -target /
+          killall -9 AudioComponentRegistrar 2>/dev/null || true
+          CHECK=$(find build -type f -perm -u+x -name SynthCheck | head -n 1)
+          "$CHECK" "Surge XT"
 
       - name: Package
         run: |
