@@ -25,7 +25,7 @@ jobs:
           npm ci
           npm run build
 
-      - name: Configure (universal: Apple Silicon + Intel, macOS 11+)
+      - name: "Configure (universal: Apple Silicon + Intel, macOS 11+)"
         run: cmake -S plugin -B build -DCMAKE_BUILD_TYPE=Release -DSLIDE_TESTS=ON -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
 
       - name: Build VST3, AU and the standalone app
