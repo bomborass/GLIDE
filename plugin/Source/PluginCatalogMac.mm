@@ -8,8 +8,8 @@ namespace slide
 {
 static juce::String fourCC (OSType t)
 {
-    const juce_wchar s[4] = { (juce_wchar) ((t >> 24) & 0xff), (juce_wchar) ((t >> 16) & 0xff),
-                              (juce_wchar) ((t >> 8) & 0xff), (juce_wchar) (t & 0xff) };
+    const juce::juce_wchar s[4] = { (juce::juce_wchar) ((t >> 24) & 0xff), (juce::juce_wchar) ((t >> 16) & 0xff),
+                              (juce::juce_wchar) ((t >> 8) & 0xff), (juce::juce_wchar) (t & 0xff) };
     return juce::String (s, 4);
 }
 
