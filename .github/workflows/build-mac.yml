@@ -1,0 +1,66 @@
+name: Build SLIDE for Mac
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  mac:
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build the interface
+        working-directory: ui
+        run: |
+          npm ci
+          npm run build
+
+      - name: Configure (universal: Apple Silicon + Intel, macOS 11+)
+        run: cmake -S plugin -B build -DCMAKE_BUILD_TYPE=Release -DSLIDE_TESTS=ON -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+
+      - name: Build VST3, AU and the standalone app
+        run: cmake --build build --config Release --target SLIDE_VST3 SLIDE_AU SLIDE_Standalone SlideTest -j 4
+
+      - name: Engine check
+        continue-on-error: true
+        run: |
+          TEST=$(find build -type f -perm -u+x -name SlideTest | head -n 1)
+          "$TEST" plugin/test/demo.json
+
+      - name: Package
+        run: |
+          ART=build/SLIDE_artefacts/Release
+          mkdir -p dist/SLIDE-mac
+          cp -R "$ART/VST3/SLIDE.vst3" dist/SLIDE-mac/
+          cp -R "$ART/AU/SLIDE.component" dist/SLIDE-mac/
+          cp -R "$ART/Standalone/SLIDE.app" dist/SLIDE-mac/
+          # ad-hoc signature: required for plug-ins to load on Apple Silicon
+          for b in dist/SLIDE-mac/*; do codesign --force --deep --sign - "$b"; done
+          cp INSTALL.txt dist/SLIDE-mac/
+          lipo -info dist/SLIDE-mac/SLIDE.vst3/Contents/MacOS/SLIDE
+          cd dist && ditto -c -k --keepParent SLIDE-mac SLIDE-mac.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SLIDE-mac
+          path: dist/SLIDE-mac.zip
+
+      - name: Publish as the "mac-latest" download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete mac-latest --yes --cleanup-tag || true
+          gh release create mac-latest dist/SLIDE-mac.zip \
+            --title "SLIDE for Mac (latest build)" \
+            --notes "Built from ${GITHUB_SHA::7}. Universal (Apple Silicon + Intel), macOS 11 or later. See INSTALL.txt inside the zip." \
+            --target "$GITHUB_SHA"

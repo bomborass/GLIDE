@@ -1,0 +1,23 @@
+SLIDE for Mac: installing
+=========================
+
+1. Unzip SLIDE-mac.zip (Safari usually does this for you) so you have a
+   folder called SLIDE-mac in your Downloads folder.
+
+2. Open Terminal (Applications > Utilities > Terminal), paste this whole line
+   and press Return:
+
+   cd ~/Downloads/SLIDE-mac && xattr -dr com.apple.quarantine . && mkdir -p ~/Library/Audio/Plug-Ins/VST3 ~/Library/Audio/Plug-Ins/Components && rm -rf ~/Library/Audio/Plug-Ins/VST3/SLIDE.vst3 ~/Library/Audio/Plug-Ins/Components/SLIDE.component && cp -R SLIDE.vst3 ~/Library/Audio/Plug-Ins/VST3/ && cp -R SLIDE.component ~/Library/Audio/Plug-Ins/Components/ && killall -9 AudioComponentRegistrar 2>/dev/null; echo "SLIDE installed"
+
+   SLIDE is not signed with a paid Apple developer certificate, so macOS
+   blocks it until the "xattr" part of that line clears the download flag.
+
+3. FL Studio: Options > Manage plugins > Find installed plugins (Start scan).
+   Then add SLIDE as a channel: Add > Plugin > SLIDE (VST3 or AU).
+
+4. The first time it opens, pick a synth. Your own AU/VST3 synths are listed
+   after a short scan; MPE synths (Vital, Serum 2, Pigments, Surge XT...) glide
+   per note. Set the synth's pitch-bend range to 48 to match SLIDE.
+
+SLIDE.app is a standalone version you can open without FL Studio.
+Rendered .wav files and dragged .mid files are kept in Music/SLIDE.
