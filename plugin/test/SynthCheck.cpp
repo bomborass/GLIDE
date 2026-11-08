@@ -25,27 +25,29 @@ static double pitchOf (const float* x, int n, double sr)
     return bestLag ? sr / bestLag : 0;
 }
 
-static double playBent (juce::AudioPluginInstance& p, double semis, int range)
+static double playBent (juce::AudioPluginInstance& p, double semis, int range, bool vst3)
 {
+    const auto setup = mpeSetup (range);
+    const int noteBlock = vst3 ? (int) setup.size() + 4 : 4;
     const double sr = 48000; const int bs = 512;
     p.enableAllBuses();
     p.prepareToPlay (sr, bs);
     const int ch = juce::jmax (2, p.getTotalNumInputChannels(), p.getTotalNumOutputChannels());
-    juce::AudioBuffer<float> blk (ch, bs), out (1, (int) sr);
+    juce::AudioBuffer<float> blk (ch, bs), out (1, (int) sr + noteBlock * bs);
     juce::MidiBuffer m;
-    const int total = (int) sr;
+    const int total = (int) sr + noteBlock * bs;
     for (int pos = 0; pos < total; pos += bs)
     {
         m.clear();
-        if (pos == 0)
-            for (auto& e : mpeSetup (range)) m.addEvent (e.data, e.size, 0);
-        if (pos == 4 * bs)
+        if (vst3) { if (pos / bs < (int) setup.size()) m.addEvent (setup[(size_t) (pos / bs)].data, setup[(size_t) (pos / bs)].size, 0); }
+        else if (pos == 0) for (auto& e : setup) m.addEvent (e.data, e.size, 0);
+        if (pos == noteBlock * bs)
         {
             const int v = juce::jlimit (0, 16383, (int) std::lround (8192 + semis / range * 8192));
             const juce::uint8 pb[3] = { 0xe1, (juce::uint8) (v & 127), (juce::uint8) (v >> 7) };
             const juce::uint8 on[3] = { 0x91, 57, 100 };
             m.addEvent (pb, 3, 0);
-            m.addEvent (on, 3, 1);
+            m.addEvent (on, 3, 64);
         }
         blk.clear();
         p.processBlock (blk, m);
@@ -54,7 +56,7 @@ static double playBent (juce::AudioPluginInstance& p, double semis, int range)
     const juce::uint8 off[3] = { 0x81, 57, 64 };
     m.clear(); m.addEvent (off, 3, 0); blk.clear(); p.processBlock (blk, m);
     p.releaseResources();
-    return pitchOf (out.getReadPointer (0, total / 2), total / 2, sr);
+    return pitchOf (out.getReadPointer (0, total - (int) sr / 2), (int) sr / 2, sr);
 }
 
 int main (int argc, char** argv)
@@ -83,7 +85,7 @@ int main (int argc, char** argv)
         for (double semis : { 0.0, 5.0, 12.0 })
         {
             const double want = 220.0 * std::pow (2.0, semis / 12.0);
-            const double got = playBent (*p, semis, 48);
+            const double got = playBent (*p, semis, 48, d.pluginFormatName == "VST3");
             std::cout << "   bend +" << semis << " st: " << got << " Hz (want " << want << ")  "
                       << (std::abs (12 * std::log2 (juce::jmax (1.0, got) / want)) < 0.3 ? "OK" : "WRONG") << "\n";
         }

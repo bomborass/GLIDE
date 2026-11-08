@@ -118,6 +118,8 @@ private:
     int blockSize = 512;
     const Compiled* lastCompiled = nullptr;
     std::atomic<bool> needSetup { true };
+    std::atomic<bool> hostedIsVst3 { false };
+    int setupPos = -1, lastSetupRange = -1;
     juce::MidiBuffer outBuf, synthBuf;
     std::array<ParamEv, 256> pendingParams {};
     int numPendingParams = 0;

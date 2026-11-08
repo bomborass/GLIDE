@@ -303,10 +303,24 @@ void SlideProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
     {
         clipNotesOff (out, 0); // the clip changed under us: don't leave notes hanging
         lastCompiled = c;
-        needSetup = true;
+        if (c != nullptr && c->range != lastSetupRange) needSetup = true;
     }
-    if (c != nullptr && needSetup.exchange (false))
-        for (const auto& e : c->setup) out.addEvent (e.data, e.size, 0);
+    if (c != nullptr && needSetup.exchange (false)) { setupPos = 0; lastSetupRange = c->range; }
+    if (c != nullptr && setupPos >= 0)
+    {
+        if (hostedIsVst3)
+        {
+            // VST3 turns CCs into parameter changes, which lose their order inside a block,
+            // so the MPE setup (RPN sequences) goes out one message per block
+            if (setupPos < (int) c->setup.size()) { const auto& e = c->setup[(size_t) setupPos++]; out.addEvent (e.data, e.size, 0); }
+            else setupPos = -1;
+        }
+        else
+        {
+            for (const auto& e : c->setup) out.addEvent (e.data, e.size, 0);
+            setupPos = -1;
+        }
+    }
 
     double bpm = 120, ppq = 0;
     bool hostPlaying = false;
@@ -437,6 +451,7 @@ void SlideProcessor::removeHosted()
         const juce::ScopedLock sl (synthLock);
         old = std::move (hosted);
         hostedDesc.reset();
+        hostedIsVst3 = false;
     }
     if (old != nullptr)
     {
@@ -456,6 +471,7 @@ void SlideProcessor::installHosted (std::unique_ptr<juce::AudioPluginInstance> i
         hostedBuffer.setSize (juce::jmax (2, inst->getTotalNumInputChannels(), inst->getTotalNumOutputChannels()), juce::jmax (blockSize, 512) * 2);
         hosted = std::move (inst);
         hostedDesc = desc;
+        hostedIsVst3 = desc.pluginFormatName == "VST3";
     }
     hasInstrument = true;
     needSetup = true;
@@ -614,7 +630,15 @@ juce::File SlideProcessor::renderWav (juce::String& error)
     {
         const int n = juce::jmin (bs, total - pos);
         mb.clear();
-        if (pos == 0) for (const auto& e : c->setup) mb.addEvent (e.data, e.size, 0);
+        if (! (hostedDesc && hostedDesc->pluginFormatName == "VST3"))
+        {
+            if (pos == 0) for (const auto& e : c->setup) mb.addEvent (e.data, e.size, 0);
+        }
+        else if (pos / bs < (int) c->setup.size())
+        {
+            const auto& e = c->setup[(size_t) (pos / bs)];
+            mb.addEvent (e.data, e.size, 0);
+        }
         const double b1 = (pos + n) / spb;
         for (; ei < c->events.size() && c->events[ei].beat < b1; ++ei)
         {

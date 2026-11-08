@@ -99,6 +99,7 @@ MidiEv ev (double beat, int order, int b0, int b1, int b2, int size = 3)
     return e;
 }
 
+constexpr double noteOnDelay = 0.004;      // beats (about 2 ms)
 constexpr double sampleStep = 10.0 / 480.0; // beats between expression samples (as the .mid export)
 constexpr double defaultPressure = 0.55;
 } // namespace
@@ -185,7 +186,9 @@ Compiled compileClip (const juce::var& clip)
         for (int r = 0; r < reps; ++r)
         {
             const double a = on + (off - on) * r / reps, b = on + (off - on) * (r + 1) / reps;
-            E.push_back (ev (a, 3, 0x90 | ch, note.pitch, vel));
+            // the first strike lands a hair after its bend/pressure/CCs, so hosts that turn
+            // those into parameter changes (VST3) still apply them before the note starts
+            E.push_back (ev (r == 0 ? a + noteOnDelay : a, 3, 0x90 | ch, note.pitch, vel));
             E.push_back (ev (b, 1, 0x80 | ch, note.pitch, rel)); // note-offs sort before new note-ons
         }
 
