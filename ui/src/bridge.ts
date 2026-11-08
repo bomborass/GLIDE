@@ -18,6 +18,7 @@
 //                "dragFile"     {name, base64} MIDI tile dragged: native drag of the file
 //                (a click without moving sends saveAudio / saveFile instead)
 //                "prepareAudio" {}             render the clip to .wav ahead of a drag
+//                "resizeWindow" {width, height} the corner grip was dragged
 //   C++ -> UI  : "init"         {clip?, instrument?}  saved state from the project
 //                "hostTransport" {playing, beat, bpm}  when following the host
 //                "pluginList"   PluginInfo[]   result of a scan (also sent on load and while scanning)
@@ -59,6 +60,7 @@ export const bridge = {
   keyUp(pitch: number) { juce?.backend?.emitEvent('keyUp', { pitch }); },
   saveFile(name: string, base64: string) { juce?.backend?.emitEvent('saveFile', { name, base64 }); },
   dragFile(name: string, base64: string) { juce?.backend?.emitEvent('dragFile', { name, base64 }); },
+  resizeWindow(width: number, height: number) { juce?.backend?.emitEvent('resizeWindow', { width, height }); },
   prepareAudio() { juce?.backend?.emitEvent('prepareAudio', {}); },
   onInit(fn: (p: { clip?: Clip; instrument?: any }) => void) { juce?.backend?.addEventListener('init', fn); },
   onParamChanged(fn: (p: { id: string; name: string; value: number }) => void) { juce?.backend?.addEventListener('paramChanged', fn); },

@@ -28,9 +28,10 @@ SlideEditor::SlideEditor (SlideProcessor& p)
     : AudioProcessorEditor (p), proc (p), browser (makeOptions())
 {
     addAndMakeVisible (browser);
-    setResizable (true, true);
-    setResizeLimits (960, 600, 4000, 3000);
-    setSize (juce::jlimit (960, 4000, proc.editorW), juce::jlimit (600, 3000, proc.editorH));
+    // resizable by the host's window edges and by the grip in the UI's bottom-right corner
+    setResizable (true, false);
+    setResizeLimits (720, 480, 4000, 3000);
+    setSize (juce::jlimit (720, 4000, proc.editorW), juce::jlimit (480, 3000, proc.editorH));
     proc.catalog().addChangeListener (this);
     browser.goToURL (juce::WebBrowserComponent::getResourceProviderRoot());
     startTimerHz (30);
@@ -90,10 +91,16 @@ juce::WebBrowserComponent::Options SlideEditor::makeOptions()
             {
                 const auto inst = self->proc.instrumentVar();
                 self->emit ("pluginLoaded", obj ({ { "id", id }, { "name", inst.getProperty ("name", "") }, { "ok", ok }, { "error", error } }));
+                if (ok) self->proc.openPluginWindow(); // show the synth right away so its sound can be picked
             }
         });
     });
     on ("openPluginEditor", [this] (const juce::var&) { proc.openPluginWindow(); });
+    on ("resizeWindow", [this] (const juce::var& v)
+    {
+        setSize (juce::jlimit (720, 4000, (int) v.getProperty ("width", getWidth())),
+                 juce::jlimit (480, 3000, (int) v.getProperty ("height", getHeight())));
+    });
     on ("useBuiltin", [this] (const juce::var& v) { proc.useBuiltin (v.getProperty ("name", "Glass Saw").toString()); });
     on ("saveFile", [this] (const juce::var& v)
     {

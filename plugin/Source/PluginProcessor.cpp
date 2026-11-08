@@ -215,8 +215,30 @@ void SlideProcessor::handleCommands (juce::MidiBuffer& out, int)
                     if (! internalPlaying) beatNow = internalBeat;
                     clipNotesOff (out, 0);
                     break;
-                case cmdKeyDown: liveNoteOn (out, (int) c.a, (float) c.b, 0); break;
-                case cmdKeyUp:   liveNoteOff (out, (int) c.a, 0); break;
+                case cmdKeyDown:
+                {
+                    // the on-screen keyboard holds one key at a time: a new key releases any other
+                    for (int p = 0; p < 128; ++p)
+                        if (keysHeld.test ((size_t) p)) liveNoteOff (out, p, 0);
+                    keysHeld.reset();
+                    const int p = juce::jlimit (0, 127, (int) c.a);
+                    liveNoteOn (out, p, (float) c.b, 0);
+                    keysHeld.set ((size_t) p);
+                    break;
+                }
+                case cmdKeyUp:
+                    if (c.a < 0)
+                    {
+                        for (int p = 0; p < 128; ++p)
+                            if (keysHeld.test ((size_t) p)) liveNoteOff (out, p, 0);
+                        keysHeld.reset();
+                    }
+                    else
+                    {
+                        liveNoteOff (out, (int) c.a, 0);
+                        keysHeld.reset ((size_t) juce::jlimit (0, 127, (int) c.a));
+                    }
+                    break;
                 case cmdAudition:
                 {
                     const int p = juce::jlimit (0, 127, (int) c.a);

@@ -1244,7 +1244,7 @@ export function Roll() {
   return (
     <div className="roll-wrap" ref={wrap}>
       <canvas ref={cv}
-        onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
+        onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onLostPointerCapture={onPointerUp}
         onPointerLeave={() => { if (!drag.current && hover.current.id) { hover.current.id = null; dirty.current = true; } }}
         onDoubleClick={onDoubleClick} onContextMenu={e => e.preventDefault()} />
       <div className="roll-corner" aria-hidden="true" />

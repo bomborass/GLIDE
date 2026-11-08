@@ -302,6 +302,9 @@ export function holdKey(pitch: number, velocity = 0.8) {
   const n: Note = { id: 'key', pitch, start: 0, length: 64, velocity, bend: [], pressure: [] };
   held = voice(n, ac.currentTime + 0.005, 64, getState().clip.bpm, -1e9);
 }
+// a key never keeps sounding once the mouse is up, even if the release lands outside the roll
+window.addEventListener('pointerup', () => { if (heldPitch !== null || held) releaseKey(); });
+window.addEventListener('blur', () => { releaseKey(); if (isPlugin) bridge.keyUp(-1); });
 export function releaseKey() {
   if (heldPitch !== null) { bridge.keyUp(heldPitch); heldPitch = null; }
   if (held && ctx) held.stop(ctx.currentTime + 0.05);

@@ -9,6 +9,8 @@ export const IStop = () => <S fill><rect x="3.5" y="3.5" width="9" height="9" rx
 export const IRec = () => <S fill><circle cx="8" cy="8" r="4" /></S>;
 export const IMetro = () => <S><path d="M6 2h4l3 12H3z" /><path d="M8 10l4-6" /></S>;
 export const ILoop = () => <S><path d="M12.5 8a4.5 4.5 0 1 1-1.3-3.2" /><path d="M12 2.5v2.6H9.4" /></S>;
+export const IGrip = () => <S><path d="M14 6 6 14M14 10l-4 4M14 13.5l-.5.5" /></S>;
+export const IWindow = () => <S><rect x="2" y="3" width="12" height="10" rx="1.5" /><path d="M2 6h12" /></S>;
 export const ISpeaker = () => <S><path d="M2.5 6h2.5l3.5-3v10L5 10H2.5z" fill="currentColor" /><path d="M11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.8a6 6 0 0 1 0 8.4" /></S>;
 export const IMute = () => <S><path d="M2.5 6h2.5l3.5-3v10L5 10H2.5z" fill="currentColor" /><path d="M11 6l3.5 4M14.5 6L11 10" /></S>;
 export const IUndo = () => <S><path d="M4 6.5h5.5a3.5 3.5 0 0 1 0 7H6" /><path d="M6.5 4L4 6.5 6.5 9" /></S>;

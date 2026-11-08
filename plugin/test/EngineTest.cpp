@@ -102,6 +102,11 @@ int main (int argc, char** argv)
     for (const auto m : midi) if (m.getMessage().isNoteOn() && m.getMessage().getNoteNumber() == 60) sawKey = true;
     check (sawKey, "on-screen key sends a note");
     proc.keyUp (60);
+    for (int i = 0; i < 100; ++i) { midi.clear(); proc.processBlock (buf, midi); }
+    check (buf.getMagnitude (0, bs) < 1e-4f, "key released: silent again");
+    proc.audition (64, 0.8f);
+    for (int i = 0; i < 100; ++i) { midi.clear(); proc.processBlock (buf, midi); }
+    check (buf.getMagnitude (0, bs) < 1e-4f, "clicked note stops by itself");
 
     // state round trip
     juce::MemoryBlock state;

@@ -124,6 +124,7 @@ private:
     std::atomic<int> paramEpoch { 0 };
     std::array<std::bitset<128>, 16> active {};
     std::array<int, 128> liveChannel {};
+    std::bitset<128> keysHeld;
     int liveRR = 0;
     struct AutoOff { int pitch; int samplesLeft; };
     std::array<AutoOff, 16> autoOffs {};

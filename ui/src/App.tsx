@@ -142,6 +142,8 @@ function TopBar({ onHelp }: { onHelp: () => void }) {
   return (
     <div className="topbar">
       <div className="logo">SLIDE</div>
+      <TitleMenu />
+      <div className="tb-scroll">
       <div className="tb-group">
         <button className={'tb-btn' + (s.playing ? ' lit' : '')} title="Play / stop (Space)" aria-label={s.playing ? 'Stop' : 'Play'} onClick={togglePlay}>{s.playing ? <I.IStop /> : <I.IPlay />}</button>
         <button className={'tb-btn' + (s.recording ? ' rec' : '')} title="Record notes and knob moves (they appear as lanes in the bottom panel)" aria-label="Record" onClick={() => armRecording(!s.recording)}><I.IRec /></button>
@@ -173,7 +175,7 @@ function TopBar({ onHelp }: { onHelp: () => void }) {
         <DeleteClip />
         <button className="tb-btn" onClick={onHelp} title="Shortcuts (?)" aria-label="Shortcuts"><I.IHelp /></button>
       </div>
-      <TitleMenu />
+      </div>
       <div className="out-tiles">
         <button className="drag-audio" draggable onDragStart={dragWav} onPointerDown={pointerDownWav} onPointerEnter={hoverWav}
           onClick={() => { if (isPlugin) return; flash('Rendering audio…'); saveWav().then(flash); }} title="Drag the audio (.wav) into your DAW, or click to save it">
@@ -201,7 +203,10 @@ function TitleMenu() {
   return (
     <div className="tb-title">
       <button className={'tb-btn' + (s.previewOn ? '' : ' muted')} title={s.previewOn ? 'Sound on' : 'Sound muted'} aria-label={s.previewOn ? 'Mute sound' : 'Unmute sound'} onClick={() => setState({ previewOn: !s.previewOn })}>{s.previewOn ? <I.ISpeaker /> : <I.IMute />}</button>
-      <Dropdown className="tb-title-btn" chevron={false} label={<><span className="tt-main">Piano roll – {name}</span><span className="tri" aria-hidden="true">▸</span></>} title="Synth, pitch-bend range and export settings">
+      {isPlugin && s.instrument?.kind === 'plugin' && (
+        <button className="tb-btn" title={`Show ${name}'s window`} aria-label="Show synth window" onClick={() => bridge.openPluginEditor()}><I.IWindow /></button>
+      )}
+      <Dropdown className="tb-title-btn" chevron={false} label={<><span className="tt-main">{name}</span><span className="tri" aria-hidden="true">▸</span></>} title="Synth, pitch-bend range and export settings">
         {close => <>
           <div className="mlabel">Playing</div>
           <MenuItem selected onClick={close}><span>{name}{s.instrument?.kind === 'plugin' && <><br /><span style={{ fontSize: 11, color: 'var(--muted)' }}>{s.instrument.vendor} · {s.instrument.format}</span></>}</span></MenuItem>
@@ -703,6 +708,23 @@ function DynamicsPopup() {
 
 // ==================================================================== Footer + help
 
+/** Bottom-right corner: drag to make the plug-in window bigger or smaller. */
+function ResizeGrip() {
+  const onDown = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const sx = e.screenX, sy = e.screenY, w0 = window.innerWidth, h0 = window.innerHeight;
+    let raf = 0, last = { w: w0, h: h0 };
+    const move = (m: PointerEvent) => {
+      last = { w: Math.round(w0 + m.screenX - sx), h: Math.round(h0 + m.screenY - sy) };
+      if (!raf) raf = requestAnimationFrame(() => { raf = 0; bridge.resizeWindow(last.w, last.h); });
+    };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); bridge.resizeWindow(last.w, last.h); };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  return <div className="resize-grip" onPointerDown={onDown} title="Drag to resize" aria-label="Resize window"><I.IGrip /></div>;
+}
+
 function Footer() {
   const tool = useStore(s => s.tool);
   const hint = useStore(s => s.hint);
@@ -720,6 +742,7 @@ function Footer() {
     <div className="footer">
       <span className={hint ? 'flash' : ''}>{hint ?? tips[tool]}</span>
       <span>{isPlugin ? 'SLIDE' : 'SLIDE · preview build'}</span>
+      {isPlugin && <ResizeGrip />}
     </div>
   );
 }
