@@ -19,6 +19,11 @@
 //                (a click without moving sends saveAudio / saveFile instead)
 //                "prepareAudio" {}             render the clip to .wav ahead of a drag
 //                "resizeWindow" {width, height} the corner grip was dragged
+//                "readFile"     {url}          a file:// URL was dropped; C++ answers with "fileData"
+//   C++ -> UI  : "fileData"     {name, base64, error?}
+//                "shortcut"     {key, shift, alt}    a ⌘-key the host would otherwise take (copy, paste, undo…)
+//                "wheelZoom"    {x, y, dx, dy, shift}  ⌘/ctrl + scroll the host would otherwise take
+//                "pinch"        {x, y, delta}         trackpad pinch over SLIDE
 //   C++ -> UI  : "init"         {clip?, instrument?}  saved state from the project
 //                "hostTransport" {playing, beat, bpm}  when following the host
 //                "pluginList"   PluginInfo[]   result of a scan (also sent on load and while scanning)
@@ -60,6 +65,8 @@ export const bridge = {
   keyUp(pitch: number) { juce?.backend?.emitEvent('keyUp', { pitch }); },
   saveFile(name: string, base64: string) { juce?.backend?.emitEvent('saveFile', { name, base64 }); },
   dragFile(name: string, base64: string) { juce?.backend?.emitEvent('dragFile', { name, base64 }); },
+  readFile(url: string) { juce?.backend?.emitEvent('readFile', { url }); },
+  onFileData(fn: (f: { name: string; base64: string; error?: string }) => void) { juce?.backend?.addEventListener('fileData', fn); },
   resizeWindow(width: number, height: number) { juce?.backend?.emitEvent('resizeWindow', { width, height }); },
   prepareAudio() { juce?.backend?.emitEvent('prepareAudio', {}); },
   onInit(fn: (p: { clip?: Clip; instrument?: any }) => void) { juce?.backend?.addEventListener('init', fn); },
@@ -83,6 +90,22 @@ export function pressTile(e: { button: number; clientX: number; clientY: number 
   const up = () => { if (!done) { done = true; cleanup(); onClick(); } };
   window.addEventListener('pointermove', move);
   window.addEventListener('pointerup', up);
+}
+
+// Keys and gestures the host (FL Studio) would swallow are caught natively and
+// replayed here as ordinary DOM events, so the normal handlers deal with them.
+if (juce?.backend) {
+  juce.backend.addEventListener('shortcut', (k: { key: string; shift: boolean; alt: boolean }) => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: k.key, metaKey: true, shiftKey: !!k.shift, altKey: !!k.alt, bubbles: true, cancelable: true }));
+  });
+  const wheelAt = (x: number, y: number, init: WheelEventInit) => {
+    const el = document.elementFromPoint(x, y) ?? document.body;
+    el.dispatchEvent(new WheelEvent('wheel', { clientX: x, clientY: y, bubbles: true, cancelable: true, ...init }));
+  };
+  juce.backend.addEventListener('wheelZoom', (w: { x: number; y: number; dx: number; dy: number; shift: boolean }) =>
+    wheelAt(w.x, w.y, { deltaX: w.dx, deltaY: w.dy, metaKey: true, shiftKey: !!w.shift }));
+  juce.backend.addEventListener('pinch', (p: { x: number; y: number; delta: number }) =>
+    wheelAt(p.x, p.y, { deltaY: -p.delta * 400, ctrlKey: true }));
 }
 
 /** Base64 of a byte array (for handing exported files to the C++ side). */

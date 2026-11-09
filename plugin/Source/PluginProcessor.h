@@ -68,6 +68,9 @@ public:
 
     PluginCatalog& catalog() { return *catalogPtr; }
 
+    /** Called (message thread) after the host restores a project or preset, so an open editor can refresh. */
+    std::function<void()> onStateRestored;
+
     int editorW = 1400, editorH = 820;
 
 private:

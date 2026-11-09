@@ -1164,7 +1164,17 @@ export function Roll() {
     const c = cv.current!;
     const h = (e: WheelEvent) => onWheel(e);
     c.addEventListener('wheel', h, { passive: false });
-    return () => c.removeEventListener('wheel', h);
+    // trackpad pinch (Safari/WKWebView sends gesture events, not ctrl+wheel)
+    let lastScale = 1;
+    const gs = (e: any) => { e.preventDefault(); lastScale = 1; };
+    const gc = (e: any) => {
+      e.preventDefault();
+      const d = Math.log(e.scale / lastScale) * -120; lastScale = e.scale;
+      onWheel({ deltaY: d, deltaX: 0, ctrlKey: true, metaKey: false, shiftKey: false, altKey: false, clientX: e.clientX, clientY: e.clientY, preventDefault() {} } as any);
+    };
+    c.addEventListener('gesturestart', gs as any);
+    c.addEventListener('gesturechange', gc as any);
+    return () => { c.removeEventListener('wheel', h); c.removeEventListener('gesturestart', gs as any); c.removeEventListener('gesturechange', gc as any); };
   }, []);
 
   // ---------------------------------------------------------------- keyboard
@@ -1197,6 +1207,29 @@ export function Roll() {
         const copies = clipboard.map(n => ({ ...n, id: uid(), start: n.start - minS + target }));
         editNotes(ns => [...ns, ...copies], true);
         setState({ selection: copies.map(c => c.id) });
+        return;
+      }
+      if (mod && e.key.toLowerCase() === 'b') {
+        // ⌘B: repeat the red range (or the selection) right after itself, as in FL
+        e.preventDefault();
+        const r = s.selRange;
+        let src = s.clip.notes.filter(n => selIds.has(n.id));
+        let span: number, from: number;
+        if (r) {
+          from = r[0]; span = r[1] - r[0];
+          if (!src.length) src = s.clip.notes.filter(n => n.start >= r[0] - 1e-6 && n.start < r[1] - 1e-6);
+        } else {
+          if (!src.length) { flash('Select notes or drag a range on the ruler first'); return; }
+          from = Math.min(...src.map(n => n.start));
+          span = Math.max(...src.map(n => n.start + n.length)) - from;
+          span = Math.ceil(span / step() - 1e-6) * step() || span;
+        }
+        if (!src.length || span <= 0) return;
+        const copies = src.map(n => ({ ...n, id: uid(), start: n.start + span }));
+        checkpoint();
+        editNotes(ns => [...ns, ...copies]);
+        setState({ selection: copies.map(c => c.id), ...(r ? { selRange: [r[1], r[1] + span] as [number, number] } : {}) });
+        flash(`Repeated ${copies.length} note${copies.length === 1 ? '' : 's'}`);
         return;
       }
       if (mod && e.key.toLowerCase() === 'd') {

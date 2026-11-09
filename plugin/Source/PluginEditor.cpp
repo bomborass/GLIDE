@@ -34,11 +34,39 @@ SlideEditor::SlideEditor (SlideProcessor& p)
     setSize (juce::jlimit (720, 4000, proc.editorW), juce::jlimit (480, 3000, proc.editorH));
     proc.catalog().addChangeListener (this);
     browser.goToURL (juce::WebBrowserComponent::getResourceProviderRoot());
+
+    // the host restored a project or preset while SLIDE is open: show it
+    juce::WeakReference<SlideEditor> weak (this);
+    proc.onStateRestored = [weak] { if (auto* self = weak.get()) self->sendInit(); };
+
+    // ⌘-shortcuts, ⌘-scroll and pinch the host would otherwise take
+    HostKeys::Handlers h;
+    h.shortcut = [weak] (const juce::String& key, bool shift, bool alt)
+    {
+        static const juce::StringArray ours { "z", "y", "c", "x", "v", "b", "d", "a" };
+        auto* self = weak.get();
+        if (self == nullptr || ! ours.contains (key)) return false;
+        self->emit ("shortcut", obj ({ { "key", key }, { "shift", shift }, { "alt", alt } }));
+        return true;
+    };
+    h.zoomScroll = [weak] (juce::Point<int> p, float dx, float dy, bool shift)
+    {
+        if (auto* self = weak.get())
+            self->emit ("wheelZoom", obj ({ { "x", p.x }, { "y", p.y }, { "dx", dx }, { "dy", dy }, { "shift", shift } }));
+    };
+    h.pinch = [weak] (juce::Point<int> p, float delta)
+    {
+        if (auto* self = weak.get())
+            self->emit ("pinch", obj ({ { "x", p.x }, { "y", p.y }, { "delta", delta } }));
+    };
+    hostKeys = std::make_unique<HostKeys> (*this, std::move (h));
     startTimerHz (30);
 }
 
 SlideEditor::~SlideEditor()
 {
+    hostKeys.reset();
+    proc.onStateRestored = nullptr;
     proc.catalog().removeChangeListener (this);
 }
 
@@ -96,6 +124,17 @@ juce::WebBrowserComponent::Options SlideEditor::makeOptions()
         });
     });
     on ("openPluginEditor", [this] (const juce::var&) { proc.openPluginWindow(); });
+    on ("readFile", [this] (const juce::var& v)
+    {
+        // a MIDI file dropped as a file:// URL (e.g. dragged from FL's browser)
+        const juce::URL url (v.getProperty ("url", "").toString());
+        const auto f = url.isLocalFile() ? url.getLocalFile() : juce::File();
+        juce::MemoryBlock mb;
+        if (f.existsAsFile() && f.getSize() < 32 * 1024 * 1024 && f.loadFileAsData (mb))
+            emit ("fileData", obj ({ { "name", f.getFileName() }, { "base64", juce::Base64::toBase64 (mb.getData(), mb.getSize()) } }));
+        else
+            emit ("fileData", obj ({ { "name", f.getFileName() }, { "base64", "" }, { "error", "Could not read the dropped file" } }));
+    });
     on ("resizeWindow", [this] (const juce::var& v)
     {
         setSize (juce::jlimit (720, 4000, (int) v.getProperty ("width", getWidth())),
@@ -104,8 +143,10 @@ juce::WebBrowserComponent::Options SlideEditor::makeOptions()
     on ("useBuiltin", [this] (const juce::var& v) { proc.useBuiltin (v.getProperty ("name", "Glass Saw").toString()); });
     on ("saveFile", [this] (const juce::var& v)
     {
-        juce::MemoryBlock mb;
-        mb.fromBase64Encoding (v.getProperty ("base64", "").toString());
+        // the UI sends standard base64 (MemoryBlock's own base64 format is different)
+        juce::MemoryOutputStream mo;
+        juce::Base64::convertFromBase64 (mo, v.getProperty ("base64", "").toString());
+        const auto mb = mo.getMemoryBlock();
         saveBytes (v.getProperty ("name", "clip.mid").toString(), mb);
     });
     on ("dragFile", [this] (const juce::var& v)
@@ -166,8 +207,9 @@ void SlideEditor::timerCallback()
 
 juce::File SlideEditor::writeExport (const juce::String& name, const juce::String& base64)
 {
-    juce::MemoryBlock mb;
-    mb.fromBase64Encoding (base64);
+    juce::MemoryOutputStream mo;
+    juce::Base64::convertFromBase64 (mo, base64);
+    const auto mb = mo.getMemoryBlock();
     auto dir = juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile ("SLIDE");
     dir.createDirectory();
     auto f = dir.getChildFile (juce::File::createLegalFileName (name));

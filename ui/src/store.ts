@@ -132,7 +132,7 @@ let state: State = {
   edit: 'draw',
   panelH: 150,
   lane: 'velocity',
-  glide: { glideMs: 325, offsetMs: -30, mode: 'time', target: 'nearest', style: 'continuous' },
+  glide: loadGlide(),
   hint: null,
   canUndo: false,
   canRedo: false,
@@ -151,27 +151,60 @@ export function useStore<T>(sel: (s: State) => T): T {
 export const subscribe = (cb: () => void) => { listeners.add(cb); return () => { listeners.delete(cb); }; };
 
 // ---------------------------------------------------------------- undo
+//
+// Every change to the clip is remembered, without each edit having to ask for
+// it: the first change after things have settled saves the clip as it was, and
+// changes that follow within the same gesture (a drag, a slider, a burst of
+// wheel ticks) join that step. A step ends when the mouse is released or after
+// a short pause. checkpoint() ends the current step right away.
 
 const undoStack: string[] = [];
 const redoStack: string[] = [];
+let undoBase: Clip | null = null;   // the clip as it was before the current step
+let stepOpen = false;
+let stepTimer: ReturnType<typeof setTimeout> | undefined;
+let quiet = 0;                       // >0 while undo/redo/load change the clip
 
-/** Snapshot the clip before an edit. Call once at the start of a drag. */
-export function checkpoint() {
-  undoStack.push(JSON.stringify(state.clip));
-  if (undoStack.length > 200) undoStack.shift();
-  redoStack.length = 0;
-  setState({ canUndo: true, canRedo: false });
+function closeStep() { stepOpen = false; undoBase = state.clip; clearTimeout(stepTimer); }
+if (typeof window !== 'undefined') window.addEventListener('pointerup', () => setTimeout(closeStep, 0), true);
+
+function noteEdit(prev: Clip) {
+  if (quiet) return;
+  if (!stepOpen) {
+    undoStack.push(JSON.stringify(undoBase ?? prev));
+    if (undoStack.length > 300) undoStack.shift();
+    redoStack.length = 0;
+    stepOpen = true;
+    if (!state.canUndo || state.canRedo) queueMicrotask(() => setState({ canUndo: true, canRedo: false }));
+  }
+  clearTimeout(stepTimer);
+  stepTimer = setTimeout(closeStep, 600);
 }
+
+/** End the current undo step: the next change starts a new one. */
+export function checkpoint() { closeStep(); }
+
+function setQuietly(p: Partial<State>) { quiet++; try { setState(p); } finally { quiet--; } closeStep(); }
+
 export function undo() {
+  closeStep();
   const prev = undoStack.pop(); if (!prev) return;
   redoStack.push(JSON.stringify(state.clip));
-  setState({ clip: JSON.parse(prev), canUndo: undoStack.length > 0, canRedo: true, preview: null });
+  setQuietly({ clip: JSON.parse(prev), canUndo: undoStack.length > 0, canRedo: true, preview: null });
 }
 export function redo() {
+  closeStep();
   const nxt = redoStack.pop(); if (!nxt) return;
   undoStack.push(JSON.stringify(state.clip));
-  setState({ clip: JSON.parse(nxt), canUndo: true, canRedo: redoStack.length > 0 });
+  setQuietly({ clip: JSON.parse(nxt), canUndo: true, canRedo: redoStack.length > 0 });
 }
+/** Replace the clip without an undo step (opening, importing, the host's tempo). */
+export function resetHistory(p: Partial<State>) {
+  undoStack.length = 0; redoStack.length = 0;
+  setQuietly({ ...p, canUndo: false, canRedo: false });
+}
+/** A change that isn't an edit (e.g. the host's tempo arriving). */
+export function editClipQuietly(fn: (c: Clip) => Clip) { setQuietly({ clip: fn(state.clip) }); }
 
 /** Mutate the clip. Pass checkpoint=true for one-shot edits. */
 export function editClip(fn: (c: Clip) => Clip, cp = false) {
@@ -210,6 +243,24 @@ export function listClips(): SavedClip[] {
 
 let saveTimer: any = null;
 let lastClipRef: Clip | null = null;
+let lastSent: { clip: Clip; preview: Note[] | null } | null = null;
+/** Plugin: nothing is sent to the engine until the project's clip has arrived. */
+let initDone = !isPlugin;
+
+/** The clip as it should sound: a popup preview (e.g. Connect) is heard before it's applied. */
+function sendToEngine() {
+  if (!initDone) return;
+  if (lastSent && lastSent.clip === state.clip && lastSent.preview === state.preview) return;
+  lastSent = { clip: state.clip, preview: state.preview };
+  bridge.clipChanged(state.preview ? { ...state.clip, notes: state.preview } : state.clip);
+}
+
+const GLIDE_KEY = 'slide.glide.v1';
+function loadGlide(): State['glide'] {
+  const def: State['glide'] = { glideMs: 325, offsetMs: -30, mode: 'time', target: 'nearest', style: 'continuous' };
+  try { return { ...def, ...JSON.parse(localStorage.getItem(GLIDE_KEY) || '{}') }; } catch { return def; }
+}
+let lastGlide: State['glide'] | null = null;
 const deleted = new Set<string>();
 function persist(c: Clip) {
   if (deleted.has(c.id)) return;
@@ -231,10 +282,12 @@ subscribe(() => {
     const fitted = fitBars(state.clip);
     if (fitted !== state.clip) { state = { ...state, clip: fitted }; }
   }
+  sendToEngine();
+  if (state.glide !== lastGlide) { lastGlide = state.glide; try { localStorage.setItem(GLIDE_KEY, JSON.stringify(state.glide)); } catch { /* ignore */ } }
   if (state.clip === lastClipRef) return;
   const prev = lastClipRef;
   lastClipRef = state.clip;
-  bridge.clipChanged(state.clip);
+  if (prev && prev.id === state.clip.id) noteEdit(prev); else closeStep();
   // switching clips: save the one being left right away if it had unsaved edits
   if (prev && prev.id !== state.clip.id && saveTimer) persist(prev);
   clearTimeout(saveTimer);
@@ -279,10 +332,12 @@ export function importClip(c: Clip) {
 // Plugin build: restore the clip and instrument saved in the FL project.
 if (isPlugin) {
   bridge.onInit(p => {
-    if (p.clip && Array.isArray(p.clip.notes)) {
-      undoStack.length = 0; redoStack.length = 0;
-      setState({ clip: fitBars(ensureLanes(p.clip)), selection: [], canUndo: false, canRedo: false });
-    }
+    // the project's own clip wins; a brand-new SLIDE starts with an empty clip
+    undoStack.length = 0; redoStack.length = 0;
+    const clip = p.clip && Array.isArray(p.clip.notes) ? fitBars(ensureLanes(p.clip)) : ensureLanes(newClip('Clip 1'));
+    initDone = true;
+    lastSent = null;
+    setQuietly({ clip, selection: [], popup: null, preview: null, canUndo: false, canRedo: false });
     const inst = p.instrument as Instrument | null | undefined;
     if (inst) setState(inst.kind === 'builtin' ? { instrument: inst, synth: inst.name, chooser: false } : { instrument: inst, chooser: false });
     else setState({ chooser: true });

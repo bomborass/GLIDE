@@ -57,9 +57,10 @@ target_sources(SLIDE PRIVATE
     Source/Clip.cpp
     Source/PluginCatalog.cpp
     Source/PluginProcessor.cpp
-    Source/PluginEditor.cpp)
+    Source/PluginEditor.cpp
+    Source/HostKeys.cpp)
 if(APPLE)
-    target_sources(SLIDE PRIVATE Source/PluginCatalogMac.mm)
+    target_sources(SLIDE PRIVATE Source/PluginCatalogMac.mm Source/HostKeysMac.mm)
 endif()
 
 target_compile_definitions(SLIDE PUBLIC
@@ -88,9 +89,9 @@ option(SLIDE_TESTS "Build the engine test" OFF)
 if(SLIDE_TESTS)
     juce_add_console_app(SlideTest PRODUCT_NAME "SlideTest" NEEDS_WEB_BROWSER TRUE)
     target_sources(SlideTest PRIVATE test/EngineTest.cpp
-        Source/Clip.cpp Source/PluginCatalog.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp)
+        Source/Clip.cpp Source/PluginCatalog.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp Source/HostKeys.cpp)
     if(APPLE)
-        target_sources(SlideTest PRIVATE Source/PluginCatalogMac.mm)
+        target_sources(SlideTest PRIVATE Source/PluginCatalogMac.mm Source/HostKeysMac.mm)
     endif()
 
     # plays a bent note into a real MPE synth (used by CI with Surge XT)

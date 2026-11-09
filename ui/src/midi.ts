@@ -4,7 +4,7 @@
 // pitch-bend sensitivity message matching RANGE, and the master gets the
 // MPE Configuration Message (RPN 6). Each note carries its own dense
 // pitch-bend and channel-pressure stream.
-import { Clip, Note, bendAt, pressureAt, evalCC, clamp, MASTER_BEND_RANGE } from './model';
+import { Clip, Note, bendAt, pressureAt, evalCC, clamp, MASTER_BEND_RANGE, PressureAs } from './model';
 import type { ExportFormat } from './store';
 import { bridge, isPlugin, toBase64 } from './bridge';
 
@@ -71,7 +71,7 @@ export function exportMidi(clip: Clip, format: ExportFormat): Uint8Array {
       }
       busyUntil.set(ch, n.start + n.length);
     }
-    writeNote(ev, n, ch, range, toTick);
+    writeNote(ev, n, ch, range, toTick, clip.pressureAs);
   }
 
   // clip-wide channel lanes on the master channel (synth-parameter lanes stay in the plugin)
@@ -97,14 +97,18 @@ export function exportMidi(clip: Clip, format: ExportFormat): Uint8Array {
   return new Uint8Array([...header, ...track(meta), ...track(ev)]);
 }
 
-function writeNote(ev: Ev[], n: Note, ch: number, range: number, toTick: (b: number) => number) {
+function writeNote(ev: Ev[], n: Note, ch: number, range: number, toTick: (b: number) => number, pressureAs: PressureAs = 'pressure') {
   const on = toTick(n.start), off = toTick(n.start + n.length);
   const vel = clamp(Math.round(n.velocity * 127), 1, 127);
   const relVel = clamp(Math.round((n.release ?? 0.5) * 127), 0, 127);
   const fine = n.fine ?? 0;
   const bendSt = (x: number) => bendAt(n, x) + fine;
   const pb = (tick: number, st: number, order: number) => { const v = bendValue(st, range); ev.push({ tick, order, bytes: [0xe0 | ch, v & 0x7f, v >> 7] }); };
-  const cp = (tick: number, p: number, order: number) => ev.push({ tick, order, bytes: [0xd0 | ch, clamp(Math.round(p * 127), 0, 127)] });
+  const cp = (tick: number, p: number, order: number) => {
+    const v = clamp(Math.round(p * 127), 0, 127);
+    const cc = { cc74: 74, cc11: 11, cc1: 1 } as Record<string, number>;
+    ev.push({ tick, order, bytes: pressureAs === 'polyAT' ? [0xa0 | ch, n.pitch, v] : cc[pressureAs] ? [0xb0 | ch, cc[pressureAs], v] : [0xd0 | ch, v] });
+  };
   const ccv = (num: number, v: number) => ev.push({ tick: on, order: 2, bytes: [0xb0 | ch, num, clamp(Math.round(v * 127), 0, 127)] });
   // per-note controllers and initial expression go before the note-on
   if (n.pan !== undefined) ccv(10, (n.pan + 1) / 2);

@@ -38,6 +38,8 @@ export interface Clip {
   bars: number;
   bpm: number;
   range: number;           // MPE pitch-bend range in semitones
+  /** How per-note pressure is sent: MPE channel pressure (standard), poly aftertouch, or a per-channel CC. */
+  pressureAs?: PressureAs;
   loop: [number, number];  // beats
   notes: Note[];
   cc: CCLane[];
@@ -53,6 +55,15 @@ const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 export const noteName = (p: number) => NAMES[((Math.round(p) % 12) + 12) % 12] + (Math.floor(Math.round(p) / 12) - 2);
 export const isBlack = (p: number) => [1, 3, 6, 8, 10].includes(((p % 12) + 12) % 12);
 export const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
+
+export type PressureAs = 'pressure' | 'polyAT' | 'cc74' | 'cc11' | 'cc1';
+export const PRESSURE_AS: [PressureAs, string, string][] = [
+  ['pressure', 'Pressure', 'MPE standard (channel pressure)'],
+  ['polyAT', 'Poly AT', 'Polyphonic aftertouch'],
+  ['cc74', 'CC74', 'Timbre / slide'],
+  ['cc11', 'CC11', 'Expression'],
+  ['cc1', 'CC1', 'Mod wheel'],
+];
 
 export function newClip(name = 'Untitled'): Clip {
   return ensureLanes({ id: uid(), name, bars: 8, bpm: 120, range: 48, loop: [0, 8 * BEATS_PER_BAR], notes: [], cc: [] });
@@ -427,11 +438,77 @@ export function nearestVoices(sel: Note[], fold = true): Note[][] {
   return voices;
 }
 
+/**
+ * Which note each note's line moves into. A note ending at time T continues
+ * into a note that starts right around T (overlapping it a little, or after a
+ * short gap). Everything ending together is matched to everything starting
+ * next as a whole: lines never cross, the total distance moved is as small as
+ * possible ('nearest') or voices keep their rank from the top ('written'), and
+ * every target is used once, so a lone note can't pull a whole chord into it.
+ * Leftover notes simply end, or start fresh.
+ */
+export function lineSuccessors(sel: Note[], target: 'written' | 'nearest' = 'nearest'): Map<string, Note> {
+  const END_TOL = 0.125, OVERLAP = 0.25, GAP = 0.5;
+  const succ = new Map<string, Note>();
+  const claimed = new Set<string>();
+  const byEnd = [...sel].sort((a, b) => (a.start + a.length) - (b.start + b.length));
+  const groups: Note[][] = [];
+  for (const n of byEnd) {
+    const g = groups[groups.length - 1];
+    if (g && (n.start + n.length) - (g[0].start + g[0].length) < END_TOL) g.push(n); else groups.push([n]);
+  }
+  for (const A of groups) {
+    const T = Math.max(...A.map(n => n.start + n.length));
+    const firstStart = Math.max(...A.map(n => n.start));
+    let cands = sel.filter(m => !claimed.has(m.id) && m.start >= T - OVERLAP && m.start <= T + GAP && m.start > firstStart + 0.01);
+    if (!cands.length) continue;
+    const t0 = Math.min(...cands.map(m => m.start));
+    cands = cands.filter(m => m.start - t0 < END_TOL);
+    const a = [...A].sort((x, y) => y.pitch - x.pitch), b = [...cands].sort((x, y) => y.pitch - x.pitch);
+    let pairs: [Note, Note][] = [];
+    if (target === 'written') {
+      for (let i = 0; i < Math.min(a.length, b.length); i++) pairs.push([a[i], b[i]]);
+    } else {
+      // order-preserving matching of the shorter list into the longer one, least total movement
+      const swap = a.length > b.length;
+      const S = swap ? b : a, L = swap ? a : b;
+      const cost = (i: number, j: number) => Math.abs(S[i].pitch - L[j].pitch);
+      const m = S.length, n = L.length;
+      const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(Infinity));
+      for (let j = 0; j <= n; j++) dp[0][j] = 0;
+      for (let i = 1; i <= m; i++)
+        for (let j = i; j <= n; j++)
+          dp[i][j] = Math.min(dp[i][j - 1], dp[i - 1][j - 1] + cost(i - 1, j - 1));
+      for (let i = m, j = n; i > 0; ) {
+        if (j > i && dp[i][j] === dp[i][j - 1]) { j--; continue; }
+        pairs.push(swap ? [L[j - 1], S[i - 1]] : [S[i - 1], L[j - 1]]);
+        i--; j--;
+      }
+    }
+    for (const [from, to] of pairs) { succ.set(from.id, to); claimed.add(to.id); }
+  }
+  return succ;
+}
+
+/** Lines of notes linked by lineSuccessors, each in time order. */
+function linesOf(sel: Note[], target: 'written' | 'nearest'): Note[][] {
+  const succ = lineSuccessors(sel, target);
+  const isNext = new Set([...succ.values()].map(n => n.id));
+  const lines: Note[][] = [];
+  for (const n of [...sel].sort((a, b) => a.start - b.start)) {
+    if (isNext.has(n.id)) continue;
+    const line = [n];
+    for (let cur = succ.get(n.id); cur; cur = succ.get(cur.id)) line.push(cur);
+    lines.push(line);
+  }
+  return lines;
+}
+
 export function connectNotes(sel: Note[], o: ConnectOpts, bpm: number): Note[] {
   const out: Note[] = [];
   const msToBeats = (ms: number) => ms / 1000 * bpm / 60;
   if (o.style === 'keep') return glideInto(sel, o, bpm);
-  const voices = o.target === 'nearest' ? nearestVoices(sel) : splitVoices(sel);
+  const voices = linesOf(sel, o.target ?? 'nearest');
   for (const voice of voices) {
     if (voice.length === 1) { out.push(voice[0]); continue; }
     const first = voice[0];
@@ -491,24 +568,8 @@ function glideInto(sel: Note[], o: ConnectOpts, bpm: number): Note[] {
   // pair each note with the pitch it glides to
   const pairs: { n: Note; next: Note }[] = [];
   const lone: Note[] = [];
-  if (o.target === 'nearest') {
-    // every note glides to whichever note of the next chord/onset is closest to it
-    const notes = [...sel].sort((a, b) => a.start - b.start || b.pitch - a.pitch);
-    const groups: Note[][] = [];
-    for (const n of notes) {
-      const g = groups[groups.length - 1];
-      if (g && Math.abs(g[0].start - n.start) < 0.125) g.push(n); else groups.push([n]);
-    }
-    groups.forEach((g, gi) => g.forEach(n => {
-      const nextG = groups[gi + 1];
-      if (!nextG) { lone.push(n); return; }
-      let best = nextG[0];
-      for (const m of nextG) if (Math.abs(m.pitch - n.pitch) < Math.abs(best.pitch - n.pitch)) best = m;
-      pairs.push({ n, next: best });
-    }));
-  } else {
-    for (const voice of splitVoices(sel)) voice.forEach((n, i) => voice[i + 1] ? pairs.push({ n, next: voice[i + 1] }) : lone.push(n));
-  }
+  const succ = lineSuccessors(sel, o.target ?? 'nearest');
+  for (const n of sel) { const next = succ.get(n.id); if (next) pairs.push({ n, next }); else lone.push(n); }
   const out: Note[] = [...lone];
   for (const { n, next } of pairs) {
     if (next.pitch === n.pitch) { out.push(n); continue; }

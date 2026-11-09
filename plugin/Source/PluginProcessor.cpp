@@ -736,6 +736,9 @@ void SlideProcessor::setStateInformation (const void* data, int size)
     }
     else if (const auto name = st.getProperty ("builtin").toString(); name.isNotEmpty())
         useBuiltin (name);
+
+    juce::WeakReference<SlideProcessor> weak (this);
+    juce::MessageManager::callAsync ([weak] { if (auto* s = weak.get()) if (s->onStateRestored) s->onStateRestored(); });
 }
 } // namespace slide
 

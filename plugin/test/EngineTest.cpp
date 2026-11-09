@@ -54,6 +54,31 @@ int main (int argc, char** argv)
         check (std::abs (zc * 2 - 293.7) < 6, "bent note sounds at the right pitch (" + juce::String (zc * 2) + " Hz, want 294)");
     }
 
+    // pressure: a soft and a hard note through the built-in synth, and the "sends as" options
+    {
+        auto render = [] (double pr)
+        {
+            juce::var c = juce::JSON::parse (R"({"bars":1,"range":48,"notes":[{"pitch":60,"start":0,"length":4,"velocity":0.8,"bend":[],"pressure":[{"t":0,"v":)" + juce::String (pr) + R"(},{"t":1,"v":)" + juce::String (pr) + R"(}]}],"cc":[]})");
+            const auto comp = compileClip (c);
+            BuiltinSynth s; s.prepare (48000);
+            juce::AudioBuffer<float> b (2, 24000); juce::MidiBuffer m;
+            for (auto& e : comp.setup) m.addEvent (e.data, e.size, 0);
+            for (auto& e : comp.events) if (e.beat < 1) m.addEvent (e.data, e.size, (int) (e.beat * 24000));
+            b.clear(); s.render (b, m, 24000);
+            return b.getRMSLevel (0, 12000, 12000);
+        };
+        const float soft = render (0.1), hard = render (1.0);
+        check (hard > soft * 2, "pressure changes the built-in synth (rms " + juce::String (soft, 4) + " -> " + juce::String (hard, 4) + ")");
+        auto firstStatus = [] (const char* as)
+        {
+            const auto comp = compileClip (juce::JSON::parse (juce::String (R"({"bars":1,"range":48,"pressureAs":")") + as + R"(","notes":[{"pitch":60,"start":0,"length":4,"velocity":0.8,"bend":[],"pressure":[]}],"cc":[]})"));
+            for (auto& e : comp.events) { const int st = e.data[0] & 0xf0; if (st == 0xd0 || st == 0xa0 || (st == 0xb0 && e.data[1] != 10)) return st == 0xb0 ? 0xb000 + e.data[1] : st; }
+            return 0;
+        };
+        check (firstStatus ("pressure") == 0xd0 && firstStatus ("polyAT") == 0xa0 && firstStatus ("cc74") == 0xb000 + 74 && firstStatus ("cc11") == 0xb000 + 11,
+               "pressure can go out as channel pressure, poly aftertouch or a CC");
+    }
+
     SlideProcessor proc;
     proc.setClip (clip);
     proc.useBuiltin ("Glass Saw");

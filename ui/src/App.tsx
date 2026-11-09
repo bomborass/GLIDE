@@ -6,8 +6,7 @@ import {
 } from './store';
 import {
   Curve, Note, PathPoint, clamp, connectNotes, presetScoop, presetFall, presetRise, presetHumanize,
-  tuneToNearest, applyVibrato, pressurePreset, applyDynamics, PressureShape, evalPath, quantize,
-} from './model';
+  tuneToNearest, applyVibrato, pressurePreset, applyDynamics, PressureShape, evalPath, quantize, PRESSURE_AS } from './model';
 import { togglePlay, playheadBeat, retime } from './audio';
 import { downloadMidi, exportMidi } from './midi';
 import { armRecording } from './record';
@@ -30,14 +29,28 @@ const FORMATS: [ExportFormat, string, string][] = [
 // ==================================================================== MIDI import
 
 async function importMidiFile(file: File) {
-  if (!/\.(mid|midi)$/i.test(file.name)) { flash('Only .mid and .midi files can be imported'); return; }
+  importMidiBytes(new Uint8Array(await file.arrayBuffer()), file.name);
+}
+
+function importMidiBytes(bytes: Uint8Array, name: string) {
+  // judge by content, not the name: drags from other apps often have odd names
+  if (bytes.length < 14 || String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]) !== 'MThd') {
+    flash(`${name || 'That file'} isn't a MIDI file`); return;
+  }
   try {
-    const clip = parseMidi(new Uint8Array(await file.arrayBuffer()), file.name);
+    const clip = parseMidi(bytes, name || 'Imported.mid');
     importClip(clip);
     const glides = clip.notes.filter(n => n.bend.length).length;
     flash(`Imported ${clip.notes.length} notes${glides ? ` (${glides} with glides)` : ''} · press Connect all notes or Continuous Glide`);
   } catch (e: any) { flash(e?.message || 'Could not read that MIDI file'); }
 }
+
+if (isPlugin) bridge.onFileData(f => {
+  if (f.error || !f.base64) { flash(f.error || 'Could not read the dropped file'); return; }
+  const bin = atob(f.base64); const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  importMidiBytes(bytes, f.name);
+});
 
 function openMidiFile() {
   const inp = document.createElement('input');
@@ -46,21 +59,36 @@ function openMidiFile() {
   inp.click();
 }
 
-/** Drop a .mid anywhere on the window to open it. */
+/** Drop a .mid anywhere on the window to open it (files, or file URLs from other apps). */
 function useMidiDrop() {
   const [over, setOver] = useState(false);
   const depth = useRef(0);
-  const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes('Files');
+  const carries = (e: React.DragEvent) => {
+    const t = Array.from(e.dataTransfer.types);
+    return t.includes('Files') || t.includes('text/uri-list') || t.some(x => x.includes('file-url'));
+  };
+  useEffect(() => {
+    // the overlay never sticks: any drag ending anywhere clears it
+    const clear = () => { depth.current = 0; setOver(false); };
+    window.addEventListener('dragend', clear); window.addEventListener('drop', clear);
+    // stop the web view from opening a file dropped outside the drop handler
+    const block = (e: DragEvent) => e.preventDefault();
+    window.addEventListener('dragover', block); window.addEventListener('drop', block);
+    return () => { window.removeEventListener('dragend', clear); window.removeEventListener('drop', clear); window.removeEventListener('dragover', block); window.removeEventListener('drop', block); };
+  }, []);
   return {
     over,
     handlers: {
-      onDragEnter: (e: React.DragEvent) => { if (!hasFiles(e)) return; e.preventDefault(); depth.current++; setOver(true); },
-      onDragOver: (e: React.DragEvent) => { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; },
-      onDragLeave: (e: React.DragEvent) => { if (!hasFiles(e)) return; depth.current = Math.max(0, depth.current - 1); if (!depth.current) setOver(false); },
+      onDragEnter: (e: React.DragEvent) => { if (!carries(e)) return; e.preventDefault(); depth.current++; setOver(true); },
+      onDragOver: (e: React.DragEvent) => { if (!carries(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; },
+      onDragLeave: (e: React.DragEvent) => { if (!carries(e)) return; depth.current = Math.max(0, depth.current - 1); if (!depth.current) setOver(false); },
       onDrop: (e: React.DragEvent) => {
-        if (!hasFiles(e)) return;
         e.preventDefault(); depth.current = 0; setOver(false);
-        const f = e.dataTransfer.files[0]; if (f) importMidiFile(f);
+        const f = e.dataTransfer.files[0];
+        if (f && f.size > 0) { importMidiFile(f); return; }
+        const url = (e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain') || '').split(/\r?\n/).find(l => l.startsWith('file:'));
+        if (url && isPlugin) { bridge.readFile(url); return; }
+        flash('Drop a .mid file here');
       },
     },
   };
@@ -197,7 +225,7 @@ function TopBar({ onHelp }: { onHelp: () => void }) {
 function TitleMenu() {
   const s = {
     previewOn: useStore(st => st.previewOn), instrument: useStore(st => st.instrument),
-    exportFormat: useStore(st => st.exportFormat), clip: { range: useStore(st => st.clip.range) },
+    exportFormat: useStore(st => st.exportFormat), clip: { range: useStore(st => st.clip.range), pressureAs: useStore(st => st.clip.pressureAs) },
   };
   const name = s.instrument?.name ?? 'No synth';
   return (
@@ -216,6 +244,10 @@ function TitleMenu() {
           <div className="mlabel">MPE pitch-bend range</div>
           <div className="chips">
             {RANGES.map(r => <button key={r} className={'chip' + (r === s.clip.range ? ' sel' : '')} onClick={() => { editClip(c => ({ ...c, range: r }), true); flash(`Range ±${r} · set your synth's bend range to match`); }}>±{r}</button>)}
+          </div>
+          <div className="mlabel">Pressure sends as</div>
+          <div className="chips">
+            {PRESSURE_AS.map(([k, l, d]) => <button key={k} title={d} className={'chip' + (k === (s.clip.pressureAs ?? 'pressure') ? ' sel' : '')} onClick={() => { editClip(c => ({ ...c, pressureAs: k }), true); flash(`Pressure sends as ${d} · map it in your synth if it doesn't respond`); }}>{l}</button>)}
           </div>
           <div className="sep" />
           <div className="mlabel">MIDI export format</div>
@@ -506,6 +538,7 @@ function ConnectPopup() {
   const bpm = useStore(s => s.clip.bpm);
   const sel = selectedNotes();
   const all = sel.length === getState().clip.notes.length;
+  const playing = useStore(s => s.playing);
   const result = () => connectNotes(sel, g, bpm);
   usePreview(() => sel.length >= 2 ? replaceSelected(result()) : null, [g.glideMs, g.offsetMs, g.mode, g.target, g.style]);
   const commit = () => {
@@ -518,11 +551,14 @@ function ConnectPopup() {
   return (
     <div className="popup">
       <h4>{g.style === 'keep' ? 'Connect notes' : 'Continuous Glide'} <small>{all ? 'all ' : ''}{sel.length} notes</small></h4>
-      <div className="label">Style</div>
+      <div className="label">Style · switch to compare, nothing changes until you press Apply</div>
       <div className="seg">
-        <button className={'btn' + (g.style === 'keep' ? ' active' : '')} onClick={() => set({ style: 'keep' })} title="Keep every note; glide into the next one, which plays again">Keep notes</button>
+        <button className={'btn' + (g.style === 'keep' ? ' active' : '')} onClick={() => set({ style: 'keep' })} title="Keep every note; glide into the next one, which plays again">Connect notes</button>
         <button className={'btn' + (g.style === 'continuous' ? ' active' : '')} onClick={() => set({ style: 'continuous' })} title="Merge each line into one gliding note">Continuous</button>
       </div>
+      <button className={'btn block listen' + (playing ? ' active' : '')} onClick={() => togglePlay()} title="Play the clip with this glide (space)">
+        {playing ? '■ Stop' : '▶ Listen'}
+      </button>
       <div className="field">
         <div className="label">Glide length</div>
         <SliderRow value={g.glideMs} min={0} max={1000} onChange={v => set({ glideMs: Math.round(v) })} display={`${g.glideMs} ms`} />
@@ -538,12 +574,12 @@ function ConnectPopup() {
       </div>
       <div className="label">Glide to</div>
       <div className="seg">
-        <button className={'btn' + (g.target === 'nearest' ? ' active' : '')} onClick={() => set({ target: 'nearest' })} title={g.style === 'keep' ? 'Each note glides to the closest note of the next chord' : 'Each line moves to the closest note, up or down, changing octave if that is shorter'}>Nearest note</button>
-        <button className={'btn' + (g.target === 'written' ? ' active' : '')} onClick={() => set({ target: 'written' })} title="Keep every note at the pitch it was written">As written</button>
+        <button className={'btn' + (g.target === 'nearest' ? ' active' : '')} onClick={() => set({ target: 'nearest' })} title="Each line moves to the closest note of the next chord; lines never cross and each note is used once">Nearest note</button>
+        <button className={'btn' + (g.target === 'written' ? ' active' : '')} onClick={() => set({ target: 'written' })} title="Top note to top note, second to second, and so on">By order</button>
       </div>
       <div className="actions">
         <button className="btn" onClick={() => setState({ popup: null, preview: null })}>Cancel</button>
-        <button className="btn primary" onClick={commit}>Connect</button>
+        <button className="btn primary" onClick={commit}>Apply</button>
       </div>
     </div>
   );

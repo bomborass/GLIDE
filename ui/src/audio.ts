@@ -3,7 +3,7 @@
 // is what the receiving synth gets. In the plugin build the C++ engine does
 // this and the UI only mirrors the playhead.
 import { BEATS_PER_BAR, Note, bendAt, pressureAt, evalCC, laneDefault, MASTER_BEND_RANGE, CCLane } from './model';
-import { getState, setState, visibleNotes, editClip } from './store';
+import { getState, setState, visibleNotes, editClip, editClipQuietly } from './store';
 import { bridge, isPlugin } from './bridge';
 
 let ctx: AudioContext | null = null;
@@ -145,7 +145,7 @@ let hostBeat = 0;
 const wrapPlugin = (b: number) => b; // the engine already reports the clip position
 bridge.onHostTransport((t: { playing: boolean; beat: number; bpm: number }) => {
   hostBeat = wrapPlugin(t.beat);
-  if (t.bpm && Math.abs(t.bpm - getState().clip.bpm) > 1e-3) editClip(c => ({ ...c, bpm: t.bpm }));
+  if (t.bpm && Math.abs(t.bpm - getState().clip.bpm) > 1e-3) editClipQuietly(c => ({ ...c, bpm: t.bpm }));
   if (t.playing !== getState().playing) setState({ playing: t.playing });
 });
 

@@ -3,6 +3,7 @@
 #pragma once
 #include <juce_gui_extra/juce_gui_extra.h>
 #include "PluginProcessor.h"
+#include "HostKeys.h"
 
 namespace slide
 {
@@ -34,6 +35,7 @@ private:
     SlideProcessor& proc;
     juce::WebBrowserComponent browser;
     std::unique_ptr<juce::FileChooser> chooser;
+    std::unique_ptr<HostKeys> hostKeys;
     bool lastPlaying = false;
     double lastBeat = -1, lastBpm = -1;
     int idleTicks = 0;

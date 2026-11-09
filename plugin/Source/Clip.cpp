@@ -127,6 +127,8 @@ Compiled compileClip (const juce::var& clip)
     out.length = juce::jmax (4.0, num (clip, "bars", 8) * 4.0);
     out.setup = mpeSetup (out.range);
     const double range = out.range;
+    const auto pressureAs = clip.getProperty ("pressureAs", "pressure").toString();
+    const int pressureCC = pressureAs == "cc74" ? 74 : pressureAs == "cc11" ? 11 : pressureAs == "cc1" ? 1 : 0;
     auto& E = out.events;
 
     // ---------------------------------------------------------------- notes
@@ -172,7 +174,14 @@ Compiled compileClip (const juce::var& clip)
         auto bendAt = [&] (double x) { return evalPath (bend, x, 0) + fine; };
         auto presAt = [&] (double x) { return evalPath (pres, x, defaultPressure); };
         auto pb = [&] (double beat, double st, int order) { const int v = bendValue (st, range); E.push_back (ev (beat, order, 0xe0 | ch, v & 0x7f, v >> 7)); };
-        auto cp = [&] (double beat, double p, int order) { E.push_back (ev (beat, order, 0xd0 | ch, clampInt (p * 127, 0, 127), 0, 2)); };
+        // pressure goes out as the clip says: MPE channel pressure, poly aftertouch or a CC
+        auto cp = [&] (double beat, double p, int order)
+        {
+            const int v = clampInt (p * 127, 0, 127);
+            if (pressureAs == "polyAT")     E.push_back (ev (beat, order, 0xa0 | ch, note.pitch, v));
+            else if (pressureCC > 0)        E.push_back (ev (beat, order, 0xb0 | ch, pressureCC, v));
+            else                            E.push_back (ev (beat, order, 0xd0 | ch, v, 0, 2));
+        };
         auto ccv = [&] (int cc, double v) { E.push_back (ev (on, 2, 0xb0 | ch, cc, clampInt (v * 127, 0, 127))); };
 
         // per-note controllers and initial expression go before the note-on
