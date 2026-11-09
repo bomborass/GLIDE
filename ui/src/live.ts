@@ -150,19 +150,37 @@ export function letGo() {
   if (isPlugin) bridge.letGo(); else jsPlay.releaseAll();
 }
 
-// computer keys as a piano (Ableton layout): A W S E D F T G Y H U J K O L P ; and Z / X for octaves
-const KEYMAP = 'awsedftgyhujkolp;';
+// Computer keys as a piano, laid out exactly like FL Studio's "typing keyboard to piano":
+//   lower row  Z S X D C V G B H N J M , L . ; /   = middle C (C4 here, "C5" in FL) up to E5
+//   upper row  Q 2 W 3 E R 5 T 6 Y 7 U I 9 O 0 P [ = ]   = one octave higher
+// Physical key positions (KeyboardEvent.code) are used, so it's the same on any layout.
+// ↓ / ↑ move both rows an octave.
+const LOWER = ['KeyZ', 'KeyS', 'KeyX', 'KeyD', 'KeyC', 'KeyV', 'KeyG', 'KeyB', 'KeyH', 'KeyN', 'KeyJ', 'KeyM', 'Comma', 'KeyL', 'Period', 'Semicolon', 'Slash'];
+const UPPER = ['KeyQ', 'Digit2', 'KeyW', 'Digit3', 'KeyE', 'KeyR', 'Digit5', 'KeyT', 'Digit6', 'KeyY', 'Digit7', 'KeyU', 'KeyI', 'Digit9', 'KeyO', 'Digit0', 'KeyP', 'BracketLeft', 'Equal', 'BracketRight'];
+export const TYPING_BASE = 60;
 let octave = 0;
+export function typingPitch(code: string): number | null {
+  const lo = LOWER.indexOf(code); if (lo >= 0) return TYPING_BASE + 12 * octave + lo;
+  const up = UPPER.indexOf(code); if (up >= 0) return TYPING_BASE + 12 + 12 * octave + up;
+  return null;
+}
 if (typeof window !== 'undefined') window.addEventListener('keydown', e => {
   const s = getState();
-  if (s.mode !== 'play' || s.chooser || s.modeChooser || e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+  if (s.mode !== 'play' || s.chooser || s.modeChooser || e.metaKey || e.ctrlKey || e.altKey) return;
   const t = e.target as HTMLElement;
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
-  const k = e.key.toLowerCase();
-  if (k === 'z' || k === 'x') { octave = clamp(octave + (k === 'z' ? -1 : 1), -3, 3); flash(`Computer keys: octave ${octave >= 0 ? '+' : ''}${octave}`); e.preventDefault(); return; }
-  if (k === 'escape') { letGo(); return; }
-  const i = KEYMAP.indexOf(k);
-  if (i >= 0) { e.preventDefault(); e.stopImmediatePropagation(); playNoteOn(60 + 12 * octave + i, 0.8); }
+  if (e.key === 'Escape') { letGo(); return; }
+  if (e.code === 'ArrowUp' || e.code === 'ArrowDown') {
+    e.preventDefault(); e.stopImmediatePropagation();
+    if (e.repeat) return;
+    octave = clamp(octave + (e.code === 'ArrowUp' ? 1 : -1), -4, 3);
+    flash(`Computer keys: Z plays C${4 + octave}`);
+    return;
+  }
+  const p = typingPitch(e.code);
+  if (p === null) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  if (!e.repeat && p >= 0 && p <= 127) playNoteOn(p, 0.8);
 }, true);
 
 // Web MIDI keyboards (browser build; in the plug-in the host sends MIDI to the engine)

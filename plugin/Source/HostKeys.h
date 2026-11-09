@@ -17,6 +17,8 @@ public:
         std::function<bool (const juce::String& key, bool shift, bool alt)> shortcut;
         /** ⌘ or ctrl + scroll over SLIDE, in SLIDE's coordinates. */
         std::function<void (juce::Point<int> pos, float dx, float dy, bool shift)> zoomScroll;
+        /** A plain key (no ⌘/ctrl/⌥) while SLIDE has focus, by macOS key code. Return true to keep it from the host. */
+        std::function<bool (int keyCode, bool repeat)> typing;
         /** Trackpad pinch over SLIDE. */
         std::function<void (juce::Point<int> pos, float delta)> pinch;
     };

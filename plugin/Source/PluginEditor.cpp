@@ -1,5 +1,6 @@
 #include "PluginEditor.h"
 #include "BinaryData.h"
+#include <map>
 
 namespace slide
 {
@@ -47,6 +48,24 @@ SlideEditor::SlideEditor (SlideProcessor& p)
         auto* self = weak.get();
         if (self == nullptr || ! ours.contains (key)) return false;
         self->emit ("shortcut", obj ({ { "key", key }, { "shift", shift }, { "alt", alt } }));
+        return true;
+    };
+    // Playing Mode: computer keys play notes (FL's typing-keyboard layout), so FL mustn't take them
+    h.typing = [weak] (int keyCode, bool repeat)
+    {
+        static const std::map<int, const char*> codes {
+            { 6, "KeyZ" }, { 1, "KeyS" }, { 7, "KeyX" }, { 2, "KeyD" }, { 8, "KeyC" }, { 9, "KeyV" }, { 5, "KeyG" }, { 11, "KeyB" },
+            { 4, "KeyH" }, { 45, "KeyN" }, { 38, "KeyJ" }, { 46, "KeyM" }, { 43, "Comma" }, { 37, "KeyL" }, { 47, "Period" },
+            { 41, "Semicolon" }, { 44, "Slash" },
+            { 12, "KeyQ" }, { 19, "Digit2" }, { 13, "KeyW" }, { 20, "Digit3" }, { 14, "KeyE" }, { 15, "KeyR" }, { 23, "Digit5" },
+            { 17, "KeyT" }, { 22, "Digit6" }, { 16, "KeyY" }, { 26, "Digit7" }, { 32, "KeyU" }, { 34, "KeyI" }, { 25, "Digit9" },
+            { 31, "KeyO" }, { 29, "Digit0" }, { 35, "KeyP" }, { 33, "BracketLeft" }, { 24, "Equal" }, { 30, "BracketRight" },
+            { 126, "ArrowUp" }, { 125, "ArrowDown" }, { 53, "Escape" } };
+        auto* self = weak.get();
+        if (self == nullptr || ! self->playModeOn) return false;
+        const auto it = codes.find (keyCode);
+        if (it == codes.end()) return false;
+        self->emit ("typingKey", obj ({ { "code", it->second }, { "repeat", repeat } }));
         return true;
     };
     h.zoomScroll = [weak] (juce::Point<int> p, float dx, float dy, bool shift)
@@ -126,6 +145,7 @@ juce::WebBrowserComponent::Options SlideEditor::makeOptions()
     on ("openPluginEditor", [this] (const juce::var&) { proc.openPluginWindow(); });
     on ("playMode", [this] (const juce::var& v)
     {
+        playModeOn = (bool) v.getProperty ("on", false);
         proc.setPlayMode ((bool) v.getProperty ("on", false), (float) (double) v.getProperty ("glideMs", 325.0),
                           (bool) v.getProperty ("distance", false), (float) (double) v.getProperty ("holdSecs", 8.0),
                           (float) (double) v.getProperty ("strumMs", 70.0));

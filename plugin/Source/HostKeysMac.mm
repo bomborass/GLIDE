@@ -20,10 +20,16 @@ HostKeys::HostKeys (juce::Component& o, Handlers h) : owner (o), handlers (std::
 
         if ([ev type] == NSEventTypeKeyDown)
         {
-            if ((f & NSEventModifierFlagCommand) == 0 || (f & NSEventModifierFlagControl) != 0) return ev;
             // only while SLIDE has keyboard focus (its web view or anything inside it)
             NSResponder* fr = [[view window] firstResponder];
             if (! [fr isKindOfClass: [NSView class]] || ! [(NSView*) fr isDescendantOf: view]) return ev;
+            if ((f & (NSEventModifierFlagCommand | NSEventModifierFlagControl | NSEventModifierFlagOption)) == 0)
+            {
+                if (handlers.typing && handlers.typing ((int) [ev keyCode], [ev isARepeat]))
+                    return nil;
+                return ev;
+            }
+            if ((f & NSEventModifierFlagCommand) == 0 || (f & NSEventModifierFlagControl) != 0) return ev;
             NSString* chars = [[ev charactersIgnoringModifiers] lowercaseString];
             if ([chars length] != 1) return ev;
             const auto key = juce::String::fromUTF8 ([chars UTF8String]);

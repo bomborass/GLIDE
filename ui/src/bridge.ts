@@ -26,6 +26,7 @@
 //                "shortcut"     {key, shift, alt}    a ⌘-key the host would otherwise take (copy, paste, undo…)
 //                "wheelZoom"    {x, y, dx, dy, shift}  ⌘/ctrl + scroll the host would otherwise take
 //                "pinch"        {x, y, delta}         trackpad pinch over SLIDE
+//                "typingKey"    {code, repeat}  a computer key in Playing Mode (FL's typing-keyboard layout)
 //                "live"         {events: [{type, id, pitch, to, ms, vel, at}]}  what Playing Mode did
 //   C++ -> UI  : "init"         {clip?, instrument?}  saved state from the project
 //                "hostTransport" {playing, beat, bpm}  when following the host
@@ -101,6 +102,10 @@ export function pressTile(e: { button: number; clientX: number; clientY: number 
 // Keys and gestures the host (FL Studio) would swallow are caught natively and
 // replayed here as ordinary DOM events, so the normal handlers deal with them.
 if (juce?.backend) {
+  // Playing Mode: computer keys caught natively (so FL doesn't take them), by physical key
+  juce.backend.addEventListener('typingKey', (k: { code: string; repeat: boolean }) => {
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: k.code, key: k.code === 'Escape' ? 'Escape' : '', repeat: !!k.repeat, bubbles: true, cancelable: true }));
+  });
   juce.backend.addEventListener('shortcut', (k: { key: string; shift: boolean; alt: boolean }) => {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: k.key, metaKey: true, shiftKey: !!k.shift, altKey: !!k.alt, bubbles: true, cancelable: true }));
   });

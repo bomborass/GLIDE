@@ -138,7 +138,7 @@ export function PlayHud() {
       ) : (
         <div className="hold-pill idle">
           <span className="hp-text">play a chord</span>
-          <span className="hp-sub">{isPlugin ? 'from your MIDI keyboard' : 'MIDI keyboard, or keys A–K on your computer (Z/X octave)'}</span>
+          <span className="hp-sub">MIDI keyboard, or your computer keys like FL: Z–/ and Q–] rows · ↓↑ octave</span>
         </div>
       )}
       <div className="play-tip" key={tip}>{TIPS[tip]}</div>

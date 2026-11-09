@@ -39,6 +39,7 @@ private:
     bool lastPlaying = false;
     double lastBeat = -1, lastBpm = -1;
     int idleTicks = 0;
+    bool playModeOn = false;
 
     JUCE_DECLARE_WEAK_REFERENCEABLE (SlideEditor)
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SlideEditor)
