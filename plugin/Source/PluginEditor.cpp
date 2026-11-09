@@ -60,7 +60,7 @@ SlideEditor::SlideEditor (SlideProcessor& p)
             self->emit ("pinch", obj ({ { "x", p.x }, { "y", p.y }, { "delta", delta } }));
     };
     hostKeys = std::make_unique<HostKeys> (*this, std::move (h));
-    startTimerHz (30);
+    startTimerHz (60);
 }
 
 SlideEditor::~SlideEditor()
@@ -124,6 +124,13 @@ juce::WebBrowserComponent::Options SlideEditor::makeOptions()
         });
     });
     on ("openPluginEditor", [this] (const juce::var&) { proc.openPluginWindow(); });
+    on ("playMode", [this] (const juce::var& v)
+    {
+        proc.setPlayMode ((bool) v.getProperty ("on", false), (float) (double) v.getProperty ("glideMs", 325.0),
+                          (bool) v.getProperty ("distance", false), (float) (double) v.getProperty ("holdSecs", 8.0),
+                          (float) (double) v.getProperty ("strumMs", 70.0));
+    });
+    on ("letGo", [this] (const juce::var&) { proc.letGo(); });
     on ("readFile", [this] (const juce::var& v)
     {
         // a MIDI file dropped as a file:// URL (e.g. dragged from FL's browser)
@@ -195,11 +202,21 @@ void SlideEditor::timerCallback()
 {
     const auto t = proc.getTransport();
     const bool changed = t.playing != lastPlaying || std::abs (t.beat - lastBeat) > 1e-4 || std::abs (t.bpm - lastBpm) > 1e-3;
-    if (changed || ++idleTicks > 30)
+    if (changed || ++idleTicks > 60)
     {
         emit ("hostTransport", obj ({ { "playing", t.playing }, { "beat", t.beat }, { "bpm", t.bpm } }));
         lastPlaying = t.playing; lastBeat = t.beat; lastBpm = t.bpm;
         idleTicks = 0;
+    }
+    // Playing Mode: what the play engine did since the last tick
+    {
+        juce::Array<juce::var> evs;
+        PlayEngine::Event e;
+        static const char* names[] = { "start", "glide", "end", "phraseOn", "phraseOff" };
+        while (proc.play.popEvent (e))
+            evs.add (obj ({ { "type", names[juce::jlimit (0, 4, e.type)] }, { "id", e.id }, { "pitch", e.pitch }, { "to", e.to },
+                            { "ms", e.ms }, { "vel", e.vel }, { "at", e.at } }));
+        if (! evs.isEmpty()) emit ("live", obj ({ { "events", evs } }));
     }
     for (const auto& [index, value] : proc.takeParamChanges())
         emit ("paramChanged", obj ({ { "id", juce::String (index) }, { "name", proc.paramName (index) }, { "value", value } }));

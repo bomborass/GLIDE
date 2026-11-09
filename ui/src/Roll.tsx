@@ -11,6 +11,7 @@ import {
 } from './store';
 import { playheadBeat, seek, audition, retime, holdKey, releaseKey } from './audio';
 import { ITarget } from './icons';
+import { liveNotes, getLive, phraseTime, soundingPitches } from './live';
 
 export const KEY_W = 74;
 export const RULER_H = 44;
@@ -305,6 +306,32 @@ export function Roll() {
       for (const n of visible) n.pressure.forEach(p => dot(ctx, bx(n.start + p.t * n.length), cy(n.pitch) - ribbonH(p.v), C.blue));
     }
 
+    // ---- Playing Mode: the phrase being played, glowing, with a "now" line
+    if (s.mode === 'play') {
+      const ln = liveNotes();
+      if (ln.length) {
+        const lv = getLive();
+        const nowB = lv.startBeat + phraseTime() * clip.bpm / 60;
+        ctx.save();
+        ctx.shadowColor = 'rgba(167, 255, 190, 0.85)'; ctx.shadowBlur = 14;
+        for (const n of ln) drawBody(ctx, n, false, 'notes');
+        ctx.shadowBlur = 10;
+        for (const n of ln) {
+          if (!n.bend.length) continue;
+          const x0 = bx(n.start), x1 = bx(n.start + n.length), yc = cy(n.pitch);
+          ctx.beginPath();
+          for (let x = x0; x <= x1; x += 1) { const y = yc - bendAt(n, (x - x0) / Math.max(1, x1 - x0)) * ROW_H; x === x0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
+          ctx.strokeStyle = '#c9ffd4'; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke();
+        }
+        if (lv.active) {
+          const x = Math.round(bx(nowB));
+          ctx.shadowColor = 'rgba(167, 255, 190, 0.9)'; ctx.shadowBlur = 12;
+          ctx.fillStyle = 'rgba(201, 255, 212, 0.85)'; ctx.fillRect(x - 0.5, RULER_H, 1.5, gb - RULER_H);
+        }
+        ctx.restore();
+      }
+    }
+
     // marquee
     const d = drag.current;
     if (d && d.kind === 'slice') {
@@ -535,6 +562,7 @@ export function Roll() {
     for (const n of notes) if (sel.has(n.id)) lit.add(n.pitch);
     const ph = playheadBeat();
     const playingKeys = new Set<number>();
+    if (getState().mode === 'play' && getLive().active) for (const p of soundingPitches(false)) playingKeys.add(Math.round(p));
     if (getState().playing) for (const n of notes) if (ph >= n.start && ph < n.start + n.length && !n.muted) playingKeys.add(Math.round(n.pitch + bendAt(n, (ph - n.start) / n.length)));
     const pTop = clamp(yPitch(RULER_H), 0, 127), pBot = clamp(yPitch(gb), 0, 127);
     for (let p = pBot; p <= pTop; p++) {
@@ -575,6 +603,22 @@ export function Roll() {
           const ph = playheadBeat();
           const span = (v.w - KEY_W) / v.ppb;
           v.sx = Math.max(0, ph - span / 2);
+        }
+      }
+      // Playing Mode: keep the phrase in view while it grows
+      if (s.mode === 'play' && getLive().active) {
+        dirty.current = true;
+        const lv = getLive();
+        const nowB = lv.startBeat + phraseTime() * s.clip.bpm / 60;
+        const span = (v.w - KEY_W) / v.ppb;
+        if (nowB > v.sx + span * 0.8) v.sx += (nowB - span * 0.6 - v.sx) * 0.08;
+        else if (nowB < v.sx) v.sx = Math.max(0, nowB - span * 0.2);
+        const ps = soundingPitches(false);
+        if (ps.length) {
+          const top = Math.max(...ps) + 3, bot = Math.min(...ps) - 3;
+          const yTop = (127 - top) * ROW_H, yBot = (127 - bot) * ROW_H, gh = gridBottom() - RULER_H;
+          if (yTop < v.sy) v.sy += (yTop - v.sy) * 0.1;
+          else if (yBot > v.sy + gh) v.sy += (yBot - gh - v.sy) * 0.1;
         }
       }
       if (ease()) dirty.current = true;

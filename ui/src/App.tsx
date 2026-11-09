@@ -14,6 +14,7 @@ import { Dropdown, MenuItem, SliderRow } from './ui';
 import * as I from './icons';
 import { isPlugin, bridge, toBase64, pressTile } from './bridge';
 import { Chooser } from './Chooser';
+import { ModeChooser, PlayHud, PlayPanel } from './PlayMode';
 import { parseMidi } from './midiImport';
 import { dragWav, pointerDownWav, saveWav, hoverWav } from './wavExport';
 
@@ -135,6 +136,7 @@ export function App() {
       <TopBar onHelp={() => setHelp(true)} />
       <div className="main" style={{ ['--insp-w' as any]: `${inspW}px` }}>
         <Roll />
+        <PlayHud />
         <Inspector onWidth={setInspW} />
         {popup === 'connect' && <ConnectPopup />}
         {popup === 'vibrato' && <VibratoPopup />}
@@ -144,6 +146,7 @@ export function App() {
       <Footer />
       {help && <Help onClose={() => setHelp(false)} />}
       <Chooser />
+      <ModeChooser />
       {drop.over && <div className="drop-zone"><div><b>Drop a MIDI file to open it</b><span>Notes, tempo and any MPE glides come in as a new clip.</span></div></div>}
     </div>
   );
@@ -170,6 +173,7 @@ function TopBar({ onHelp }: { onHelp: () => void }) {
   return (
     <div className="topbar">
       <div className="logo">SLIDE</div>
+      <ModeSwitch />
       <TitleMenu />
       <div className="tb-scroll">
       <div className="tb-group">
@@ -367,7 +371,8 @@ function Inspector({ onWidth }: { onWidth: (w: number) => void }) {
   const selection = useStore(s => s.selection);
   const notes = useStore(s => s.clip.notes);
   const sel = notes.filter(n => selection.includes(n.id));
-  const body = !sel.length ? <EmptyInspector /> : tool === 'pressure' ? <PressureInspector sel={sel} /> : <PitchInspector sel={sel} />;
+  const mode = useStore(s => s.mode);
+  const body = mode === 'play' ? <PlayPanel /> : !sel.length ? <EmptyInspector /> : tool === 'pressure' ? <PressureInspector sel={sel} /> : <PitchInspector sel={sel} />;
   return (
     <aside className={'insp-wrap' + (dragW === null ? ' anim' : '') + (open || dragW !== null ? '' : ' closed')} style={{ width }}>
       <div className="insp-handle" role="separator" aria-orientation="vertical" aria-label={open ? 'Drag right to hide the panel' : 'Show the panel'}
@@ -743,6 +748,16 @@ function DynamicsPopup() {
 }
 
 // ==================================================================== Footer + help
+
+function ModeSwitch() {
+  const mode = useStore(s => s.mode);
+  return (
+    <div className="mode-switch" role="tablist" aria-label="Mode">
+      <button role="tab" aria-selected={mode === 'play'} className={mode === 'play' ? 'on play' : ''} onClick={() => setState({ mode: 'play', popup: null, preview: null })} title="Playing Mode: hold chords and glide between them">Play</button>
+      <button role="tab" aria-selected={mode === 'edit'} className={mode === 'edit' ? 'on' : ''} onClick={() => setState({ mode: 'edit' })} title="Editing Mode: the piano roll">Edit</button>
+    </div>
+  );
+}
 
 /** Bottom-right corner: drag to make the plug-in window bigger or smaller. */
 function ResizeGrip() {

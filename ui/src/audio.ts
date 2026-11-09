@@ -104,6 +104,41 @@ function voice(n: Note, when: number, durBeats: number, bpm: number, ccBeat0: nu
   return handle;
 }
 
+/** A held voice for Playing Mode in the browser: it glides when told to and stops when told to. */
+export interface LiveVoiceHandle { glide: (from: number, to: number, secs: number) => void; stop: () => void; pressure: (v: number) => void }
+export function liveVoice(pitch: number, vel: number): LiveVoiceHandle {
+  const ac = audio();
+  const cfg = SYNTHS[getState().synth] ?? SYNTHS['Glass Saw'];
+  const o1 = ac.createOscillator(), o2 = ac.createOscillator();
+  o1.type = cfg.a; o2.type = cfg.b; o2.detune.value = cfg.detune;
+  const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = cfg.q;
+  const g = ac.createGain();
+  o1.connect(f); o2.connect(f); f.connect(g); g.connect(master!);
+  const now = ac.currentTime;
+  const amp = cfg.gain * (0.35 + 0.65 * vel) * (0.2 + 0.8 * 0.6);
+  o1.frequency.setValueAtTime(hz(pitch), now); o2.frequency.setValueAtTime(hz(pitch), now);
+  f.frequency.setValueAtTime(Math.min(16000, cfg.cutoff * (0.6 + 0.6 * 3.5) + hz(pitch)), now);
+  g.gain.setValueAtTime(0, now); g.gain.linearRampToValueAtTime(amp, now + 0.01);
+  o1.start(now); o2.start(now);
+  return {
+    glide(from, to, secs) {
+      const t = ac.currentTime, steps = 32;
+      const curve = new Float32Array(steps), cut = new Float32Array(steps);
+      for (let i = 0; i < steps; i++) {
+        const x = i / (steps - 1), p = from + (to - from) * x * x * (3 - 2 * x);
+        curve[i] = hz(p); cut[i] = Math.min(16000, cfg.cutoff * 2.7 + hz(p));
+      }
+      for (const prm of [o1.frequency, o2.frequency]) { prm.cancelScheduledValues(t); prm.setValueCurveAtTime(curve, t, Math.max(0.005, secs)); }
+      f.frequency.cancelScheduledValues(t); f.frequency.setValueCurveAtTime(cut, t, Math.max(0.005, secs));
+    },
+    stop() {
+      const t = ac.currentTime;
+      try { g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(g.gain.value, t); g.gain.linearRampToValueAtTime(0, t + 0.25); o1.stop(t + 0.3); o2.stop(t + 0.3); } catch { /* stopped */ }
+    },
+    pressure(v) { const t = ac.currentTime; g.gain.setTargetAtTime(cfg.gain * (0.35 + 0.65 * vel) * (0.2 + 0.8 * v), t, 0.03); },
+  };
+}
+
 function click(when: number, accent: boolean) {
   const ac = audio();
   const o = ac.createOscillator(); const g = ac.createGain();
@@ -294,8 +329,13 @@ export function encodeWav(buf: AudioBuffer): Uint8Array {
 // Keyboard: a key sounds for as long as it is held.
 let held: { stop: (t: number) => void } | undefined;
 let heldPitch: number | null = null;
+let playHook: ((pitch: number, velocity: number) => void) | null = null;
+/** Playing Mode (browser) takes the on-screen keys. */
+export function setPlayKeyHook(fn: typeof playHook) { playHook = fn; }
+
 export function holdKey(pitch: number, velocity = 0.8) {
   releaseKey();
+  if (!isPlugin && playHook && getState().mode === 'play') { playHook(pitch, velocity); return; }
   if (!getState().previewOn) return;
   if (isPlugin) { bridge.keyDown(pitch, velocity); heldPitch = pitch; return; }
   const ac = audio();

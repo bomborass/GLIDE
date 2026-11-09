@@ -133,6 +133,53 @@ int main (int argc, char** argv)
     for (int i = 0; i < 100; ++i) { midi.clear(); proc.processBlock (buf, midi); }
     check (buf.getMagnitude (0, bs) < 1e-4f, "clicked note stops by itself");
 
+    // Playing Mode: a held chord glides into the next one, then lets go after the hold time
+    {
+        proc.setPlayMode (true, 300, false, 2.0f, 70);
+        auto runBlocks = [&] (int count, juce::MidiBuffer input, int& ons, int& offs, int& bends)
+        {
+            for (int i = 0; i < count; ++i)
+            {
+                midi.clear();
+                if (i == 0) midi.addEvents (input, 0, -1, 0);
+                proc.processBlock (buf, midi);
+                for (const auto m : midi)
+                {
+                    const auto msg = m.getMessage();
+                    if (msg.isNoteOn()) ++ons; else if (msg.isNoteOff()) ++offs; else if (msg.isPitchWheel() && msg.getPitchWheelValue() != 8192) ++bends;
+                }
+            }
+        };
+        head.playing = false;
+        juce::MidiBuffer chord1, release1, chord2;
+        for (int p : { 60, 64, 67 }) { chord1.addEvent (juce::MidiMessage::noteOn (1, p, 0.8f), 0); release1.addEvent (juce::MidiMessage::noteOff (1, p), 0); }
+        // a strummed chord: notes 15 ms apart
+        int k = 0; for (int p : { 62, 65, 69 }) chord2.addEvent (juce::MidiMessage::noteOn (1, p, 0.8f), juce::jmin (bs - 1, 720 * k++ / 2));
+        int ons = 0, offs = 0, bends = 0;
+        runBlocks (5, {}, ons, offs, bends); // mode switch
+        ons = offs = bends = 0;
+        runBlocks (20, chord1, ons, offs, bends);
+        check (ons == 3, "Playing Mode: first chord sounds right away (" + juce::String (ons) + " notes)");
+        ons = offs = bends = 0;
+        runBlocks (50, release1, ons, offs, bends);
+        check (offs == 0 && buf.getMagnitude (0, bs) > 0.01f, "letting go of the keys keeps the chord sounding");
+        ons = offs = bends = 0;
+        runBlocks (60, chord2, ons, offs, bends);
+        check (ons == 0 && offs == 0 && bends > 10, "the next (strummed) chord glides in without new attacks (" + juce::String (bends) + " bend steps)");
+        ons = offs = bends = 0;
+        runBlocks (250, {}, ons, offs, bends);
+        check (offs == 3, "after the hold time everything is let go (" + juce::String (offs) + " notes off)");
+        juce::StringArray seen;
+        PlayEngine::Event e;
+        static const char* names[] = { "start", "glide", "end", "phraseOn", "phraseOff" };
+        while (proc.play.popEvent (e)) seen.add (names[e.type]);
+        std::cout << "  events: " << seen.joinIntoString (" ") << "\n";
+        check (seen.joinIntoString (" ") == "phraseOn start start start glide glide glide end end end phraseOff", "the UI is told what happened");
+        proc.setPlayMode (false, 300, false, 8, 70);
+        for (int i = 0; i < 5; ++i) { midi.clear(); proc.processBlock (buf, midi); }
+        head.playing = true;
+    }
+
     // state round trip
     juce::MemoryBlock state;
     proc.getStateInformation (state);

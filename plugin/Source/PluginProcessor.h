@@ -6,6 +6,7 @@
 #include "Clip.h"
 #include "BuiltinSynth.h"
 #include "PluginCatalog.h"
+#include "PlayEngine.h"
 #include <array>
 #include <atomic>
 #include <bitset>
@@ -50,6 +51,11 @@ public:
     void keyUp (int pitch);
     void audition (int pitch, float velocity);
 
+    // Playing Mode
+    void setPlayMode (bool on, float glideMs, bool distance, float holdSecs, float strumMs);
+    void letGo();
+    PlayEngine play;
+
     void useBuiltin (const juce::String& name);
     void loadPlugin (const juce::String& id, std::function<void (bool, juce::String)> done);
     void openPluginWindow();
@@ -76,11 +82,13 @@ public:
 private:
     // ------------------------------------------------------------------ audio thread helpers
     struct Cmd { int type; double a; double b; double c; };
-    enum CmdType { cmdPlay, cmdStop, cmdSeek, cmdKeyDown, cmdKeyUp, cmdAudition, cmdPanic };
+    enum CmdType { cmdPlay, cmdStop, cmdSeek, cmdKeyDown, cmdKeyUp, cmdAudition, cmdPanic, cmdPlayMode, cmdLetGo };
+    bool playMode = false; // audio thread
     void push (Cmd c);
     void handleCommands (juce::MidiBuffer& out, int numSamples);
     void renderRange (const Compiled& c, double from, double to, double offsetSamples, double samplesPerBeat, int numSamples, juce::MidiBuffer& out);
     void clipNotesOff (juce::MidiBuffer& out, int sample);
+    int playRange() const { auto* c = live.load(); return c != nullptr ? c->range : 48; }
     void addEvent (juce::MidiBuffer& out, const juce::uint8* data, int size, int sample);
     int liveNoteOn (juce::MidiBuffer& out, int pitch, float velocity, int sample);
     void liveNoteOff (juce::MidiBuffer& out, int pitch, int sample);

@@ -105,6 +105,17 @@ void SlideProcessor::transport (const juce::String& cmd, double beat, const juce
     else if (cmd == "seek") push ({ cmdSeek, beat, 0, 0 });
 }
 
+void SlideProcessor::setPlayMode (bool on, float glideMs, bool distance, float holdSecs, float strumMs)
+{
+    play.glideMs = juce::jlimit (0.0f, 4000.0f, glideMs);
+    play.distance = distance;
+    play.holdSecs = juce::jlimit (1.0f, 60.0f, holdSecs);
+    play.strumMs = juce::jlimit (10.0f, 300.0f, strumMs);
+    push ({ cmdPlayMode, on ? 1.0 : 0.0, 0, 0 });
+}
+
+void SlideProcessor::letGo() { push ({ cmdLetGo, 0, 0, 0 }); }
+
 void SlideProcessor::keyDown (int pitch, float velocity)  { push ({ cmdKeyDown, (double) pitch, velocity, 0 }); }
 void SlideProcessor::keyUp (int pitch)                    { push ({ cmdKeyUp, (double) pitch, 0, 0 }); }
 void SlideProcessor::audition (int pitch, float velocity) { push ({ cmdAudition, (double) pitch, velocity, 0 }); }
@@ -116,6 +127,7 @@ void SlideProcessor::prepareToPlay (double sr, int bs)
     sampleRate = sr;
     blockSize = bs;
     builtin.prepare (sr);
+    play.prepare (sr);
     outBuf.ensureSize (8192);
     synthBuf.ensureSize (8192);
     const juce::ScopedLock sl (synthLock);
@@ -215,7 +227,14 @@ void SlideProcessor::handleCommands (juce::MidiBuffer& out, int)
                     if (! internalPlaying) beatNow = internalBeat;
                     clipNotesOff (out, 0);
                     break;
+                case cmdPlayMode:
+                    if (playMode && c.a < 0.5) play.releaseAll (0, out);
+                    if (! playMode && c.a >= 0.5) { clipNotesOff (out, 0); internalPlaying = false; }
+                    playMode = c.a >= 0.5;
+                    break;
+                case cmdLetGo: play.releaseAll (0, out); break;
                 case cmdKeyDown:
+                    if (playMode) { play.noteOn (juce::jlimit (0, 127, (int) c.a), (float) c.b, 0, playRange(), out); break; }
                 {
                     // the on-screen keyboard holds one key at a time: a new key releases any other
                     for (int p = 0; p < 128; ++p)
@@ -227,6 +246,7 @@ void SlideProcessor::handleCommands (juce::MidiBuffer& out, int)
                     break;
                 }
                 case cmdKeyUp:
+                    if (playMode) break; // Playing Mode holds notes until the next chord
                     if (c.a < 0)
                     {
                         for (int p = 0; p < 128; ++p)
@@ -286,17 +306,25 @@ void SlideProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
     out.clear();
     numPendingParams = 0;
 
+    play.beginBlock (n);
+    handleCommands (out, n);
+
     // MIDI from the host: notes on channel 1 (FL's keyboard) play on SLIDE's live channels,
-    // anything else (an MPE controller, CCs) passes straight through
+    // anything else (an MPE controller, CCs) passes straight through.
+    // In Playing Mode every note goes to the play engine, which holds and glides.
     for (const auto m : midi)
     {
         const auto msg = m.getMessage();
+        if (playMode)
+        {
+            if (msg.isNoteOn()) { play.noteOn (msg.getNoteNumber(), msg.getFloatVelocity(), m.samplePosition, playRange(), out); continue; }
+            if (msg.isNoteOff() || msg.isAftertouch()) continue;
+            if (msg.isChannelPressure()) { play.pressure (msg.getChannelPressureValue() / 127.0f, m.samplePosition, out); continue; }
+        }
         if (msg.getChannel() == 1 && msg.isNoteOn()) liveNoteOn (out, msg.getNoteNumber(), msg.getFloatVelocity(), m.samplePosition);
         else if (msg.getChannel() == 1 && msg.isNoteOff()) liveNoteOff (out, msg.getNoteNumber(), m.samplePosition);
         else out.addEvent (msg, m.samplePosition);
     }
-
-    handleCommands (out, n);
 
     const Compiled* c = live.load();
     if (c != lastCompiled)
@@ -336,7 +364,8 @@ void SlideProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
     const double spb = sampleRate * 60.0 / bpm;
     const double blockBeats = n / spb;
 
-    if (c != nullptr)
+    if (playMode) play.process (n, playRange(), out);
+    if (c != nullptr && ! playMode)
     {
         const double L = c->length;
         if (hostPlaying)

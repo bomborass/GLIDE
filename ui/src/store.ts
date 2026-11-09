@@ -48,6 +48,10 @@ export interface State {
   exportFormat: ExportFormat;
   popup: PopupKind;
   glide: { glideMs: number; offsetMs: number; mode: 'time' | 'distance'; target: 'written' | 'nearest'; style: 'continuous' | 'keep' };
+  /** Playing Mode (hold chords and glide between them live) or Editing Mode (the piano roll). */
+  mode: 'play' | 'edit';
+  modeChooser: boolean;
+  play: { holdSecs: number; strumMs: number; capture: boolean };
   hint: string | null;     // toast line in the footer
   canUndo: boolean;
   canRedo: boolean;
@@ -133,6 +137,9 @@ let state: State = {
   panelH: 150,
   lane: 'velocity',
   glide: loadGlide(),
+  mode: loadMode(),
+  modeChooser: true,
+  play: loadPlay(),
   hint: null,
   canUndo: false,
   canRedo: false,
@@ -261,6 +268,12 @@ function loadGlide(): State['glide'] {
   try { return { ...def, ...JSON.parse(localStorage.getItem(GLIDE_KEY) || '{}') }; } catch { return def; }
 }
 let lastGlide: State['glide'] | null = null;
+function loadMode(): State['mode'] { try { return localStorage.getItem('slide.mode') === 'play' ? 'play' : 'edit'; } catch { return 'edit'; } }
+function loadPlay(): State['play'] {
+  const def = { holdSecs: 8, strumMs: 70, capture: true };
+  try { return { ...def, ...JSON.parse(localStorage.getItem('slide.play.v1') || '{}') }; } catch { return def; }
+}
+let lastPlay: State['play'] | null = null, lastMode: State['mode'] | null = null;
 const deleted = new Set<string>();
 function persist(c: Clip) {
   if (deleted.has(c.id)) return;
@@ -283,6 +296,8 @@ subscribe(() => {
     if (fitted !== state.clip) { state = { ...state, clip: fitted }; }
   }
   sendToEngine();
+  if (state.play !== lastPlay) { lastPlay = state.play; try { localStorage.setItem('slide.play.v1', JSON.stringify(state.play)); } catch { /* ignore */ } }
+  if (state.mode !== lastMode) { lastMode = state.mode; try { localStorage.setItem('slide.mode', state.mode); } catch { /* ignore */ } }
   if (state.glide !== lastGlide) { lastGlide = state.glide; try { localStorage.setItem(GLIDE_KEY, JSON.stringify(state.glide)); } catch { /* ignore */ } }
   if (state.clip === lastClipRef) return;
   const prev = lastClipRef;

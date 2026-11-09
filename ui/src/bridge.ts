@@ -19,11 +19,14 @@
 //                (a click without moving sends saveAudio / saveFile instead)
 //                "prepareAudio" {}             render the clip to .wav ahead of a drag
 //                "resizeWindow" {width, height} the corner grip was dragged
+//                "playMode"     {on, glideMs, distance, holdSecs, strumMs}  Playing Mode on/off and its settings
+//                "letGo"        {}             release everything Playing Mode is holding
 //                "readFile"     {url}          a file:// URL was dropped; C++ answers with "fileData"
 //   C++ -> UI  : "fileData"     {name, base64, error?}
 //                "shortcut"     {key, shift, alt}    a ⌘-key the host would otherwise take (copy, paste, undo…)
 //                "wheelZoom"    {x, y, dx, dy, shift}  ⌘/ctrl + scroll the host would otherwise take
 //                "pinch"        {x, y, delta}         trackpad pinch over SLIDE
+//                "live"         {events: [{type, id, pitch, to, ms, vel, at}]}  what Playing Mode did
 //   C++ -> UI  : "init"         {clip?, instrument?}  saved state from the project
 //                "hostTransport" {playing, beat, bpm}  when following the host
 //                "pluginList"   PluginInfo[]   result of a scan (also sent on load and while scanning)
@@ -67,6 +70,9 @@ export const bridge = {
   dragFile(name: string, base64: string) { juce?.backend?.emitEvent('dragFile', { name, base64 }); },
   readFile(url: string) { juce?.backend?.emitEvent('readFile', { url }); },
   onFileData(fn: (f: { name: string; base64: string; error?: string }) => void) { juce?.backend?.addEventListener('fileData', fn); },
+  playMode(p: { on: boolean; glideMs: number; distance: boolean; holdSecs: number; strumMs: number }) { juce?.backend?.emitEvent('playMode', p); },
+  letGo() { juce?.backend?.emitEvent('letGo', {}); },
+  onLive(fn: (p: { events: any[] }) => void) { juce?.backend?.addEventListener('live', fn); },
   resizeWindow(width: number, height: number) { juce?.backend?.emitEvent('resizeWindow', { width, height }); },
   prepareAudio() { juce?.backend?.emitEvent('prepareAudio', {}); },
   onInit(fn: (p: { clip?: Clip; instrument?: any }) => void) { juce?.backend?.addEventListener('init', fn); },
